@@ -79,6 +79,33 @@ function Terminal() {
   }, []);
 
   // Interactive prompt handler
+  const createVaultFromTerminal = useCallback(async (data) => {
+    setProcessing(true);
+    addLine("system", "  Encrypting vault...");
+    try {
+      const encrypted = await encryptMessage(data.message, data.passphrase);
+      const payload = {
+        encryptedBlob: encrypted.encryptedBlob,
+        iv: encrypted.iv,
+        salt: encrypted.salt,
+        vaultType: data.vaultType,
+        triggerDays: data.triggerDays || null,
+        releaseEmail: data.releaseEmail || null,
+      };
+      await api.post("/api/vault/create", payload);
+      addLines("output", [
+        "",
+        `  ✓ Vault created successfully.`,
+        `  Type: ${data.vaultType}`,
+        "",
+      ]);
+    } catch (err) {
+      addLine("error", `  Failed to create vault: ${err.response?.data?.message || "Server error"}`);
+    } finally {
+      setProcessing(false);
+    }
+  }, [addLine, addLines]);
+
   const handlePromptInput = useCallback(async (value) => {
     if (!prompt) return;
     const { step, data } = prompt;
@@ -210,34 +237,9 @@ function Terminal() {
         setProcessing(false);
       }
     }
-  }, [prompt, addLine, addLines, navigate]);
+  }, [prompt, addLine, addLines, navigate, createVaultFromTerminal]);
 
-  const createVaultFromTerminal = useCallback(async (data) => {
-    setProcessing(true);
-    addLine("system", "  Encrypting vault...");
-    try {
-      const encrypted = await encryptMessage(data.message, data.passphrase);
-      const payload = {
-        encryptedBlob: encrypted.encryptedBlob,
-        iv: encrypted.iv,
-        salt: encrypted.salt,
-        vaultType: data.vaultType,
-        triggerDays: data.triggerDays || null,
-        releaseEmail: data.releaseEmail || null,
-      };
-      const res = await api.post("/api/vault/create", payload);
-      addLines("output", [
-        "",
-        `  ✓ Vault created successfully.`,
-        `  Type: ${data.vaultType}`,
-        "",
-      ]);
-    } catch (err) {
-      addLine("error", `  Failed to create vault: ${err.response?.data?.message || "Server error"}`);
-    } finally {
-      setProcessing(false);
-    }
-  }, [addLine, addLines]);
+
 
   const handleCommand = useCallback(async (cmd) => {
     const trimmed = cmd.trim();
