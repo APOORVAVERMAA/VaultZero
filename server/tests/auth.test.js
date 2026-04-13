@@ -16,7 +16,11 @@ const db = require("../config/db");
 const authController = require("../controllers/authController");
 
 // Helpers
-const mockReq = (body = {}) => ({ body });
+const mockReq = (body = {}) => ({
+  body,
+  ip: "127.0.0.1",
+  headers: { "user-agent": "jest" }
+});
 const mockRes = () => {
   const res = {};
   res.status = jest.fn().mockReturnValue(res);
@@ -30,7 +34,7 @@ describe("Auth Controller", () => {
 
   describe("POST /register - password policy", () => {
     it("rejects passwords shorter than 8 characters", async () => {
-      const req = mockReq({ email: "a@b.com", password: "Short1" });
+      const req = mockReq({ fullName: "Test User", email: "a@b.com", password: "Short1" });
       const res = mockRes();
       await authController.register(req, res);
       expect(res.status).toHaveBeenCalledWith(400);
@@ -40,14 +44,14 @@ describe("Auth Controller", () => {
     });
 
     it("rejects passwords without uppercase", async () => {
-      const req = mockReq({ email: "a@b.com", password: "lowercase1" });
+      const req = mockReq({ fullName: "Test User", email: "a@b.com", password: "lowercase1" });
       const res = mockRes();
       await authController.register(req, res);
       expect(res.status).toHaveBeenCalledWith(400);
     });
 
     it("rejects passwords without a number", async () => {
-      const req = mockReq({ email: "a@b.com", password: "NoNumberHere" });
+      const req = mockReq({ fullName: "Test User", email: "a@b.com", password: "NoNumberHere" });
       const res = mockRes();
       await authController.register(req, res);
       expect(res.status).toHaveBeenCalledWith(400);
@@ -59,8 +63,8 @@ describe("Auth Controller", () => {
       process.env.JWT_SECRET = "testsecret";
       const hashed = await bcrypt.hash("Valid1pass", 12);
       db.query
-        .mockResolvedValueOnce([[{ id: 1, email: "a@b.com", password_hash: hashed, terms_accepted: 1, onboarding_completed: 1 }]])
-        .mockResolvedValueOnce([{}]); // last_login update
+        .mockResolvedValueOnce({ rows: [{ id: 1, email: "a@b.com", password_hash: hashed, terms_accepted: true, onboarding_completed: true, email_verified: true }] })
+        .mockResolvedValueOnce({ rows: [] }); // last_login update
 
       const req = mockReq({ email: "a@b.com", password: "Valid1pass" });
       const res = mockRes();
@@ -71,7 +75,7 @@ describe("Auth Controller", () => {
 
     it("rejects invalid password", async () => {
       const hashed = await bcrypt.hash("CorrectPass1", 12);
-      db.query.mockResolvedValueOnce([[{ id: 1, email: "a@b.com", password_hash: hashed }]]);
+      db.query.mockResolvedValueOnce({ rows: [{ id: 1, email: "a@b.com", password_hash: hashed, email_verified: true }] });
 
       const req = mockReq({ email: "a@b.com", password: "WrongPass1" });
       const res = mockRes();

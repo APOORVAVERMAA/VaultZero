@@ -5,10 +5,7 @@ const requiredEnv = [
   "EMAIL_USER",
   "EMAIL_PASS",
   "FRONTEND_URL",
-  "DB_HOST",
-  "DB_USER",
-  "DB_PASSWORD",
-  "DB_NAME"
+  "DATABASE_URL"
 ];
 
 requiredEnv.forEach((key) => {
@@ -50,7 +47,7 @@ app.use(limiter);
 // Test route
 app.get('/', async (req, res) => {
   try {
-    const [rows] = await db.query('SELECT 1');
+    await db.query('SELECT 1');
     res.json({ message: 'VaultZero Backend Running', db: 'Connected' });
   } catch (error) {
     logger.error(error, 'Database connection check failed');

@@ -1,5 +1,5 @@
--- VaultZero Full Schema — PostgreSQL
--- Run this on a fresh PostgreSQL database.
+-- VaultZero Complete PostgreSQL Schema
+-- Apply on a fresh PostgreSQL database
 
 CREATE TABLE IF NOT EXISTS users (
   id SERIAL PRIMARY KEY,

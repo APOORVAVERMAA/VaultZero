@@ -13,13 +13,13 @@ Migrations are SQL scripts that modify the database schema (tables, columns, ind
 ## How to run
 
 ```bash
-mysql -u root -p VaultZero < migrations/<filename>.sql
+psql "$DATABASE_URL" -f migrations/<filename>.sql
 ```
 
 Example:
 
 ```bash
-mysql -u root -p VaultZero < migrations/001_security_hardening.sql
+psql "$DATABASE_URL" -f migrations/schema.sql
 ```
 
 ## Existing migrations
@@ -27,3 +27,6 @@ mysql -u root -p VaultZero < migrations/001_security_hardening.sql
 | File | Description |
 |------|-------------|
 | `001_security_hardening.sql` | Renames `token` → `token_hash`, adds indexes for release tokens and vault lookups |
+| `002_add_full_name.sql` | Adds `full_name` column for legacy environments |
+| `003_full_schema.sql` | PostgreSQL full schema for fresh installations |
+| `schema.sql` | Canonical complete PostgreSQL schema |

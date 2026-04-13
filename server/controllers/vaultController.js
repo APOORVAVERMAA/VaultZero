@@ -47,10 +47,11 @@ exports.createVault = async (req, res) => {
 
     const hmacSignature = generateHMAC(encryptedBlob, iv, salt);
 
-    const [insertResult] = await db.query(
+    const { rows: insertedRows } = await db.query(
       `INSERT INTO vaults 
        (user_id, vault_type, encrypted_blob, iv, salt, trigger_days, release_email, status, hmac_signature) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?)`,
+       VALUES ($1, $2, $3, $4, $5, $6, $7, 'active', $8)
+       RETURNING id`,
       [
         userId,
         vaultType,
@@ -64,10 +65,10 @@ exports.createVault = async (req, res) => {
     );
 
     // Send vault creation alert
-    const [userRow] = await db.query('SELECT email FROM users WHERE id = ?', [userId]);
+    const { rows: userRow } = await db.query('SELECT email FROM users WHERE id = $1', [userId]);
     if (userRow.length > 0) {
       getLocation(req.ip).then(location => {
-        sendSecurityAlert(userRow[0].email, 'vault_created', insertResult.insertId, { ip: req.ip, location, time: new Date() });
+        sendSecurityAlert(userRow[0].email, 'vault_created', insertedRows[0].id, { ip: req.ip, location, time: new Date() });
       }).catch(() => {});
     }
 
@@ -85,10 +86,10 @@ exports.getMyVaults = async (req, res) => {
   try {
     const userId = req.user.id;
 
-    const [vaults] = await db.query(
+     const { rows: vaults } = await db.query(
       `SELECT id, vault_type, status, trigger_days, created_at
        FROM vaults
-       WHERE user_id = ?
+       WHERE user_id = $1
        AND status != 'deleted'
        ORDER BY created_at DESC`,
       [userId]
@@ -110,8 +111,8 @@ exports.openVault = async (req, res) => {
     const ip = req.ip;
     const vaultId = req.params.id;
 
-    const [rows] = await db.query(
-      "SELECT * FROM vaults WHERE id = ? AND user_id = ?",
+    const { rows } = await db.query(
+      "SELECT * FROM vaults WHERE id = $1 AND user_id = $2",
       [vaultId, userId]
     );
 
@@ -124,7 +125,7 @@ exports.openVault = async (req, res) => {
     if (!verifyVaultIntegrity(vault)) {
       await db.query(
         `INSERT INTO vault_events (vault_id, user_id, event_type, ip_address)
-         VALUES (?, ?, 'tamper_detected', ?)`,
+         VALUES ($1, $2, 'tamper_detected', $3)`,
         [vaultId, userId, ip]
       );
       return res.status(403).json({ message: "Vault integrity compromised" });
@@ -136,19 +137,19 @@ exports.openVault = async (req, res) => {
 
     if (vault.vault_type === "destroy" && vault.status === "active") {
       await db.query(
-        "UPDATE vaults SET status = 'destroyed' WHERE id = ?",
+        "UPDATE vaults SET status = 'destroyed' WHERE id = $1",
         [vaultId]
       );
     }
 
     await db.query(
       `INSERT INTO vault_events (vault_id, user_id, event_type, ip_address)
-       VALUES (?, ?, 'opened', ?)`,
+       VALUES ($1, $2, 'opened', $3)`,
       [vaultId, userId, ip]
     );
 
     // Send security alert for vault opened (fire-and-forget)
-    const [ownerRows] = await db.query('SELECT email FROM users WHERE id = ?', [userId]);
+    const { rows: ownerRows } = await db.query('SELECT email FROM users WHERE id = $1', [userId]);
     if (ownerRows.length) {
       getLocation(req.ip).then(location => {
         sendSecurityAlert(ownerRows[0].email, 'vault_opened', vaultId, { ip: req.ip, location, time: new Date() });
@@ -178,25 +179,25 @@ exports.deleteVault = async (req, res) => {
     const ip = req.ip;
     const vaultId = req.params.id;
 
-    const [result] = await db.query(
+    const result = await db.query(
       `UPDATE vaults 
        SET status = 'deleted'
-       WHERE id = ? AND user_id = ?`,
+       WHERE id = $1 AND user_id = $2`,
       [vaultId, userId]
     );
 
-    if (!result.affectedRows) {
+    if (!result.rowCount) {
       return res.status(404).json({ message: "Vault not found" });
     }
 
     await db.query(
       `INSERT INTO vault_events (vault_id, user_id, event_type, ip_address)
-       VALUES (?, ?, 'deleted', ?)`,
+       VALUES ($1, $2, 'deleted', $3)`,
       [vaultId, userId, ip]
     );
 
     // Send security alert for vault deleted (fire-and-forget)
-    const [delOwner] = await db.query('SELECT email FROM users WHERE id = ?', [userId]);
+    const { rows: delOwner } = await db.query('SELECT email FROM users WHERE id = $1', [userId]);
     if (delOwner.length) {
       getLocation(req.ip).then(location => {
         sendSecurityAlert(delOwner[0].email, 'vault_deleted', vaultId, { ip: req.ip, location, time: new Date() });
@@ -227,11 +228,11 @@ exports.accessReleaseVault = async (req, res) => {
 
     const tokenHash = sha256(rawToken);
 
-    const [rows] = await db.query(
+    const { rows } = await db.query(
       `SELECT rt.*, v.*
        FROM release_tokens rt
        JOIN vaults v ON rt.vault_id = v.id
-       WHERE rt.token_hash = ?`,
+       WHERE rt.token_hash = $1`,
       [tokenHash]
     );
 
@@ -261,24 +262,28 @@ exports.accessReleaseVault = async (req, res) => {
 
       // select ONE question and store it if not selected
       if (!data.question_id) {
-        const [q] = await db.query(
+        const { rows: q } = await db.query(
           `SELECT id FROM security_questions 
-           WHERE user_id = ?
-           ORDER BY RAND()
+           WHERE user_id = $1
+           ORDER BY RANDOM()
            LIMIT 1`,
           [data.user_id]
         );
 
+        if (!q.length) {
+          return res.status(400).json({ message: "No security questions configured" });
+        }
+
         await db.query(
-          `UPDATE release_tokens SET question_id = ? WHERE token_hash = ?`,
+          `UPDATE release_tokens SET question_id = $1 WHERE token_hash = $2`,
           [q[0].id, tokenHash]
         );
 
         data.question_id = q[0].id;
       }
 
-      const [question] = await db.query(
-        `SELECT id, question_text FROM security_questions WHERE id = ?`,
+      const { rows: question } = await db.query(
+        `SELECT id, question_text FROM security_questions WHERE id = $1`,
         [data.question_id]
       );
 
@@ -290,7 +295,7 @@ exports.accessReleaseVault = async (req, res) => {
 
     // Mark used AFTER delivering vault data
     await db.query(
-      `UPDATE release_tokens SET used = TRUE WHERE token_hash = ?`,
+      `UPDATE release_tokens SET used = TRUE WHERE token_hash = $1`,
       [tokenHash]
     );
 
@@ -315,11 +320,11 @@ exports.verifyReleaseAnswer = async (req, res) => {
 
     const tokenHash = sha256(token);
 
-    const [rows] = await db.query(
+    const { rows } = await db.query(
       `SELECT rt.*, v.*
        FROM release_tokens rt
        JOIN vaults v ON rt.vault_id = v.id
-       WHERE rt.token_hash = ?`,
+       WHERE rt.token_hash = $1`,
       [tokenHash]
     );
 
@@ -333,10 +338,14 @@ exports.verifyReleaseAnswer = async (req, res) => {
       return res.status(403).json({ message: "Token locked" });
     }
 
-    const [question] = await db.query(
-      `SELECT answer_hash FROM security_questions WHERE id = ?`,
+    const { rows: question } = await db.query(
+      `SELECT answer_hash FROM security_questions WHERE id = $1`,
       [data.question_id]
     );
+
+    if (!question.length) {
+      return res.status(400).json({ message: "Security question not found" });
+    }
 
     const match = await bcrypt.compare(answer, question[0].answer_hash);
 
@@ -344,13 +353,13 @@ exports.verifyReleaseAnswer = async (req, res) => {
       await db.query(
         `UPDATE release_tokens 
          SET failed_attempts = failed_attempts + 1 
-         WHERE token_hash = ?`,
+         WHERE token_hash = $1`,
         [tokenHash]
       );
 
       // Alert owner on 3rd failed attempt
       if (data.failed_attempts + 1 >= 3) {
-        const [alertOwner] = await db.query('SELECT email FROM users WHERE id = ?', [data.user_id]);
+        const { rows: alertOwner } = await db.query('SELECT email FROM users WHERE id = $1', [data.user_id]);
         if (alertOwner.length) {
           getLocation(req.ip).then(location => {
             sendSecurityAlert(alertOwner[0].email, 'suspicious_attempts', data.vault_id, { ip: req.ip, location, time: new Date() });
@@ -369,7 +378,7 @@ exports.verifyReleaseAnswer = async (req, res) => {
     await db.query(
       `UPDATE release_tokens 
        SET verification_passed = TRUE
-       WHERE token_hash = ?`,
+       WHERE token_hash = $1`,
       [tokenHash]
     );
 

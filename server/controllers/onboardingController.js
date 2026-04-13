@@ -32,16 +32,16 @@ exports.completeOnboarding = async (req, res) => {
     // Update user
     await db.query(
       `UPDATE users 
-       SET alternate_email = ?, 
+       SET alternate_email = $1, 
            onboarding_completed = TRUE,
            terms_accepted = TRUE
-       WHERE id = ?`,
+       WHERE id = $2`,
       [alternateEmail, userId]
     );
 
     // Delete existing questions (safety)
     await db.query(
-      `DELETE FROM security_questions WHERE user_id = ?`,
+      `DELETE FROM security_questions WHERE user_id = $1`,
       [userId]
     );
 
@@ -51,7 +51,7 @@ exports.completeOnboarding = async (req, res) => {
 
       await db.query(
         `INSERT INTO security_questions (user_id, question_text, answer_hash)
-         VALUES (?, ?, ?)`,
+         VALUES ($1, $2, $3)`,
         [userId, q.question, hashed]
       );
     }
@@ -69,7 +69,7 @@ exports.acceptPolicy = async (req, res) => {
   try {
     const userId = req.user.id;
     await db.query(
-      "UPDATE users SET terms_accepted = TRUE WHERE id = ?",
+      "UPDATE users SET terms_accepted = TRUE WHERE id = $1",
       [userId]
     );
     res.json({ message: "Policy accepted" });

@@ -38,7 +38,9 @@ describe("Vault Controller", () => {
 
   describe("POST /create", () => {
     it("creates a vault successfully", async () => {
-      db.query.mockResolvedValueOnce([{ insertId: 1 }]);
+      db.query
+        .mockResolvedValueOnce({ rows: [{ id: 1 }] })
+        .mockResolvedValueOnce({ rows: [] });
 
       const req = mockReq({
         body: {
@@ -73,11 +75,12 @@ describe("Vault Controller", () => {
         .update(blob + iv + salt).digest("hex");
 
       db.query
-        .mockResolvedValueOnce([[{
+        .mockResolvedValueOnce({ rows: [{
           id: 10, user_id: 1, encrypted_blob: blob, iv, salt,
           hmac_signature: hmac, vault_type: "eternal", status: "active"
-        }]])
-        .mockResolvedValueOnce([{}]); // event insert
+        }] })
+        .mockResolvedValueOnce({ rows: [] }) // event insert
+        .mockResolvedValueOnce({ rows: [] });
 
       const req = mockReq({ params: { id: "10" } });
       const res = mockRes();
@@ -96,13 +99,13 @@ describe("Vault Controller", () => {
         .update("tampered").digest("hex");
 
       db.query
-        .mockResolvedValueOnce([[{
+        .mockResolvedValueOnce({ rows: [{
           id: 10, user_id: 1,
           encrypted_blob: "dGVzdA==", iv: "aXY=", salt: "c2FsdA==",
           hmac_signature: wrongHmac,
           vault_type: "eternal", status: "active"
-        }]])
-        .mockResolvedValueOnce([{}]); // tamper event
+        }] })
+        .mockResolvedValueOnce({ rows: [] }); // tamper event
 
       const req = mockReq({ params: { id: "10" } });
       const res = mockRes();

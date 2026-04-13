@@ -207,7 +207,9 @@ function Dashboard() {
   const [vaults, setVaults] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activity, setActivity] = useState([]);
-  const [showTour, setShowTour] = useState(() => localStorage.getItem("vaultTourCompleted") !== "true");
+  const userEmail = (localStorage.getItem("email") || "").trim().toLowerCase();
+  const tourStorageKey = userEmail ? `vaultTourCompleted:${userEmail}` : "vaultTourCompleted";
+  const [showTour, setShowTour] = useState(() => localStorage.getItem(tourStorageKey) !== "true");
 
   const fetchVaults = useCallback(async () => {
     try {
@@ -403,7 +405,7 @@ function Dashboard() {
         {showTour && (
           <GuidedTour
             onComplete={() => {
-              localStorage.setItem("vaultTourCompleted", "true");
+              localStorage.setItem(tourStorageKey, "true");
               setShowTour(false);
             }}
           />

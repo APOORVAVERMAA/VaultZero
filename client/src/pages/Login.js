@@ -25,7 +25,7 @@ function Login() {
       localStorage.setItem("termsAccepted", res.data.termsAccepted);
       localStorage.setItem("onboardingCompleted", res.data.onboardingCompleted);
       localStorage.setItem("fullName", res.data.fullName || "");
-      localStorage.setItem("email", email);
+      localStorage.setItem("email", email.trim().toLowerCase());
 
       if (!res.data.termsAccepted) {
         navigate("/policy");

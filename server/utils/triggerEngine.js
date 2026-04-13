@@ -14,7 +14,7 @@ const startTriggerEngine = () => {
     try {
       logger.info("Trigger Engine Running...");
 
-      const [vaults] = await db.query(`
+      const { rows: vaults } = await db.query(`
         SELECT v.*, u.email as owner_email, u.last_login
         FROM vaults v
         JOIN users u ON v.user_id = u.id
@@ -40,24 +40,24 @@ const startTriggerEngine = () => {
           expiry.setHours(expiry.getHours() + 48);
 
           // Transaction: mark released + store hashed token atomically
-          const conn = await db.getConnection();
+          const conn = await db.connect();
           try {
-            await conn.beginTransaction();
+            await conn.query('BEGIN');
 
             await conn.query(
-              `UPDATE vaults SET status = 'released' WHERE id = ? AND status = 'active'`,
+              `UPDATE vaults SET status = 'released' WHERE id = $1 AND status = 'active'`,
               [vault.id]
             );
 
             await conn.query(
               `INSERT INTO release_tokens (vault_id, token_hash, expires_at)
-               VALUES (?, ?, ?)`,
+               VALUES ($1, $2, $3)`,
               [vault.id, tokenHash, expiry]
             );
 
-            await conn.commit();
+            await conn.query('COMMIT');
           } catch (txErr) {
-            await conn.rollback();
+            await conn.query('ROLLBACK');
             logger.error(txErr, `Transaction failed for vault ${vault.id}`);
             continue;
           } finally {

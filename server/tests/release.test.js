@@ -48,16 +48,16 @@ describe("Release Controller", () => {
         .update(blob + iv + salt).digest("hex");
 
       db.query
-        .mockResolvedValueOnce([[{
+        .mockResolvedValueOnce({ rows: [{
           token_hash: tokenHash, vault_id: 1, used: false,
           expires_at: new Date(Date.now() + 86400000),
           failed_attempts: 0, verification_passed: false, question_id: null,
           user_id: 5, id: 1, encrypted_blob: blob, iv, salt,
           hmac_signature: hmac, vault_type: "release", status: "released"
-        }]])
-        .mockResolvedValueOnce([[{ id: 42 }]])  // random question
-        .mockResolvedValueOnce([{}])             // update question_id
-        .mockResolvedValueOnce([[{ id: 42, question_text: "Your pet?" }]]); // question text
+        }] })
+        .mockResolvedValueOnce({ rows: [{ id: 42 }] })  // random question
+        .mockResolvedValueOnce({ rows: [] })             // update question_id
+        .mockResolvedValueOnce({ rows: [{ id: 42, question_text: "Your pet?" }] }); // question text
 
       const req = mockReq({ params: { token: rawToken } });
       const res = mockRes();
@@ -90,15 +90,15 @@ describe("Release Controller", () => {
       const answerHash = await bcrypt.hash("fluffy", 12);
 
       db.query
-        .mockResolvedValueOnce([[{
+        .mockResolvedValueOnce({ rows: [{
           token_hash: tokenHash, vault_id: 1, used: false,
           expires_at: new Date(Date.now() + 86400000),
           failed_attempts: 0, verification_passed: false, question_id: 42,
           user_id: 5, id: 1, encrypted_blob: blob, iv, salt,
           hmac_signature: hmac, vault_type: "release", status: "released"
-        }]])
-        .mockResolvedValueOnce([[{ answer_hash: answerHash }]])  // question answer
-        .mockResolvedValueOnce([{}]); // update verification_passed
+        }] })
+        .mockResolvedValueOnce({ rows: [{ answer_hash: answerHash }] })  // question answer
+        .mockResolvedValueOnce({ rows: [] }); // update verification_passed
 
       const req = mockReq({ params: { token: rawToken }, body: { answer: "fluffy" } });
       const res = mockRes();
@@ -122,15 +122,15 @@ describe("Release Controller", () => {
       const answerHash = await bcrypt.hash("fluffy", 12);
 
       db.query
-        .mockResolvedValueOnce([[{
+        .mockResolvedValueOnce({ rows: [{
           token_hash: tokenHash, vault_id: 1, used: false,
           expires_at: new Date(Date.now() + 86400000),
           failed_attempts: 0, verification_passed: false, question_id: 42,
           user_id: 5, id: 1, encrypted_blob: blob, iv, salt,
           hmac_signature: hmac, vault_type: "release", status: "released"
-        }]])
-        .mockResolvedValueOnce([[{ answer_hash: answerHash }]])
-        .mockResolvedValueOnce([{}]); // increment failed_attempts
+        }] })
+        .mockResolvedValueOnce({ rows: [{ answer_hash: answerHash }] })
+        .mockResolvedValueOnce({ rows: [] }); // increment failed_attempts
 
       const req = mockReq({ params: { token: rawToken }, body: { answer: "wrong" } });
       const res = mockRes();

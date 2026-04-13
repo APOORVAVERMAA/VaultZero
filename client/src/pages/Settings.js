@@ -45,7 +45,13 @@ function Settings() {
   };
 
   const handleLogout = () => {
+    const userEmail = (localStorage.getItem("email") || "").trim().toLowerCase();
+    const userTourKey = userEmail ? `vaultTourCompleted:${userEmail}` : "vaultTourCompleted";
+    const tourCompleted = localStorage.getItem(userTourKey);
+    const interfaceMode = localStorage.getItem("vaultInterfaceMode");
     localStorage.clear();
+    if (tourCompleted) localStorage.setItem(userTourKey, tourCompleted);
+    if (interfaceMode) localStorage.setItem("vaultInterfaceMode", interfaceMode);
     navigate("/", { replace: true });
   };
 
@@ -214,7 +220,7 @@ function Settings() {
                   disabled={deleteLoading || !deletePassword}
                   className="flex-1 px-3 py-2 rounded-lg bg-red-600 hover:bg-red-500 text-white text-sm font-mono font-semibold transition-colors disabled:opacity-40"
                 >
-                  {deleteLoading ? "Deleting..." : "Confirm Delete"}
+                  {deleteLoading ? "Verifying..." : "Confirm Delete"}
                 </button>
               </div>
             </motion.div>

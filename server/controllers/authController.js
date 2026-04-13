@@ -28,8 +28,8 @@ exports.register = async (req, res) => {
     }
 
     // Check if user exists
-    const [existing] = await db.query(
-      'SELECT id, email_verified FROM users WHERE email = ?',
+    const { rows: existing } = await db.query(
+      'SELECT id, email_verified FROM users WHERE email = $1',
       [email]
     );
 
@@ -39,7 +39,7 @@ exports.register = async (req, res) => {
         const token = crypto.randomBytes(32).toString('hex');
         const expires = new Date(Date.now() + 24 * 60 * 60 * 1000);
         await db.query(
-          'UPDATE users SET verification_token = ?, verification_token_expires = ? WHERE id = ?',
+          'UPDATE users SET verification_token = $1, verification_token_expires = $2 WHERE id = $3',
           [token, expires, existing[0].id]
         );
         const verificationLink = `${process.env.FRONTEND_URL}/verify-email?token=${token}`;
@@ -60,7 +60,7 @@ exports.register = async (req, res) => {
 
     // Insert user with verification token
     await db.query(
-      'INSERT INTO users (full_name, email, password_hash, terms_accepted, onboarding_completed, email_verified, verification_token, verification_token_expires) VALUES (?, ?, ?, FALSE, FALSE, FALSE, ?, ?)',
+      'INSERT INTO users (full_name, email, password_hash, terms_accepted, onboarding_completed, email_verified, verification_token, verification_token_expires) VALUES ($1, $2, $3, FALSE, FALSE, FALSE, $4, $5)',
       [fullName, email, hashedPassword, verificationToken, tokenExpires]
     );
 
@@ -86,8 +86,8 @@ exports.verifyEmail = async (req, res) => {
       return res.status(400).json({ message: 'Verification token required.' });
     }
 
-    const [users] = await db.query(
-      'SELECT id, email_verified, verification_token_expires FROM users WHERE verification_token = ?',
+    const { rows: users } = await db.query(
+      'SELECT id, email_verified, verification_token_expires FROM users WHERE verification_token = $1',
       [token]
     );
 
@@ -106,7 +106,7 @@ exports.verifyEmail = async (req, res) => {
     }
 
     await db.query(
-      'UPDATE users SET email_verified = TRUE, verification_token = NULL, verification_token_expires = NULL WHERE id = ?',
+      'UPDATE users SET email_verified = TRUE, verification_token = NULL, verification_token_expires = NULL WHERE id = $1',
       [user.id]
     );
 
@@ -127,7 +127,7 @@ exports.resendVerification = async (req, res) => {
       return res.status(400).json({ message: 'Email required.' });
     }
 
-    const [users] = await db.query('SELECT id, full_name, email_verified FROM users WHERE email = ?', [email]);
+    const { rows: users } = await db.query('SELECT id, full_name, email_verified FROM users WHERE email = $1', [email]);
 
     if (users.length === 0) {
       return res.status(200).json({ message: 'If the email exists, a verification link has been sent.' });
@@ -141,7 +141,7 @@ exports.resendVerification = async (req, res) => {
     const expires = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
     await db.query(
-      'UPDATE users SET verification_token = ?, verification_token_expires = ? WHERE id = ?',
+      'UPDATE users SET verification_token = $1, verification_token_expires = $2 WHERE id = $3',
       [token, expires, users[0].id]
     );
 
@@ -161,8 +161,8 @@ exports.login = async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    const [users] = await db.query(
-      'SELECT * FROM users WHERE email = ?',
+    const { rows: users } = await db.query(
+      'SELECT * FROM users WHERE email = $1',
       [email]
     );
 
@@ -185,7 +185,7 @@ exports.login = async (req, res) => {
 
     // Update last login
     await db.query(
-      "UPDATE users SET last_login = NOW() WHERE id = ?",
+      "UPDATE users SET last_login = NOW() WHERE id = $1",
       [user.id]
     );
 

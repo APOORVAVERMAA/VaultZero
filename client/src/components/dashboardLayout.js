@@ -71,10 +71,12 @@ function DashboardLayout() {
   }, []);
 
   const handleLogout = () => {
-    const tourCompleted = localStorage.getItem("vaultTourCompleted");
+    const userEmail = (localStorage.getItem("email") || "").trim().toLowerCase();
+    const userTourKey = userEmail ? `vaultTourCompleted:${userEmail}` : "vaultTourCompleted";
+    const tourCompleted = localStorage.getItem(userTourKey);
     const interfaceMode = localStorage.getItem("vaultInterfaceMode");
     localStorage.clear();
-    if (tourCompleted) localStorage.setItem("vaultTourCompleted", tourCompleted);
+    if (tourCompleted) localStorage.setItem(userTourKey, tourCompleted);
     if (interfaceMode) localStorage.setItem("vaultInterfaceMode", interfaceMode);
     navigate("/", { replace: true });
   };
