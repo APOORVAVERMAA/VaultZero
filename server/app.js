@@ -38,21 +38,13 @@ const allowedOrigins = [
   process.env.FRONTEND_URL,
 ];
 
+// const cors = require("cors");
+
 app.use(cors({
-  origin: function (origin, callback) {
-    if (!origin) return callback(null, true);
-
-    // allow localhost + exact env + all vercel previews
-    if (
-      allowedOrigins.includes(origin) ||
-      /https:\/\/.*\.vercel\.app$/.test(origin)
-    ) {
-      return callback(null, true);
-    }
-
-    return callback(new Error("Not allowed by CORS"));
-  },
-  credentials: true
+  origin: true,
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "DELETE"],
+  allowedHeaders: ["Content-Type", "Authorization"]
 }));
 
 // Middleware
