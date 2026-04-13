@@ -1,4 +1,5 @@
 require('dotenv').config();
+
 const requiredEnv = [
   "JWT_SECRET",
   "HMAC_SECRET",
@@ -14,6 +15,7 @@ requiredEnv.forEach((key) => {
     process.exit(1);
   }
 });
+
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
@@ -22,18 +24,39 @@ const morgan = require('morgan');
 const db = require('./config/db');
 const startTriggerEngine = require('./utils/triggerEngine');
 const logger = require('./utils/logger');
+
 const app = express();
+
 app.disable('x-powered-by');
 app.set('trust proxy', 1);
 
 logger.info("STARTING SERVER...");
 
-// Middleware
-app.use(helmet());
+// ✅ FIXED CORS (VERY IMPORTANT)
+const allowedOrigins = [
+  "http://localhost:3000",
+  process.env.FRONTEND_URL,
+];
+
 app.use(cors({
-  origin: process.env.FRONTEND_URL,
+  origin: function (origin, callback) {
+    if (!origin) return callback(null, true);
+
+    // allow localhost + exact env + all vercel previews
+    if (
+      allowedOrigins.includes(origin) ||
+      /https:\/\/.*\.vercel\.app$/.test(origin)
+    ) {
+      return callback(null, true);
+    }
+
+    return callback(new Error("Not allowed by CORS"));
+  },
   credentials: true
 }));
+
+// Middleware
+app.use(helmet());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 app.use(morgan('dev'));
@@ -55,7 +78,7 @@ app.get('/', async (req, res) => {
   }
 });
 
-// Health monitoring
+// Health route
 app.get('/health', async (req, res) => {
   try {
     await db.query('SELECT 1');
@@ -73,6 +96,7 @@ app.get('/health', async (req, res) => {
   }
 });
 
+// Routes
 const authRoutes = require('./routes/authRoutes');
 app.use('/api/auth', authRoutes);
 
@@ -87,12 +111,10 @@ app.use("/api/onboarding", onboardingRoutes);
 
 const PORT = process.env.PORT || 9000;
 
-
 const server = app.listen(PORT, () => {
   logger.info(`Server running on port ${PORT}`);
   startTriggerEngine();
 });
-
 
 server.on('error', (err) => {
   logger.error(err, "Server error");
