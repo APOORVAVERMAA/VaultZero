@@ -18,6 +18,8 @@ const TYPE_META = {
   release: { label: "RELEASE", color: "text-amber-400", border: "border-amber-500/20" },
 };
 
+const MAX_FILE_SIZE = 10 * 1024 * 1024;
+
 function Vaults() {
   const [vaults, setVaults] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -78,6 +80,7 @@ function Vaults() {
   const handleCreateVault = async () => {
     if (!file && !message) { alert("Message or file required"); return; }
     if (!passphrase) { alert("Passphrase required"); return; }
+    if (file && file.size > MAX_FILE_SIZE) { alert("Media file too large. Maximum allowed size is 10MB."); return; }
     if (vaultType === "release" && (!triggerDays || !releaseEmail)) {
       alert("Trigger days and recipient email required for release vault.");
       return;

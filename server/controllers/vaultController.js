@@ -15,22 +15,26 @@ const generateHMAC = (blob, iv, salt) => {
 };
 
 const verifyVaultIntegrity = (vault) => {
-  const recalculated = generateHMAC(
-    vault.encrypted_blob,
-    vault.iv,
-    vault.salt
-  );
-  return crypto.timingSafeEqual(
-    Buffer.from(recalculated),
-    Buffer.from(vault.hmac_signature)
-  );
+  try {
+    const recalculated = generateHMAC(
+      vault.encrypted_blob,
+      vault.iv,
+      vault.salt
+    );
+    return crypto.timingSafeEqual(
+      Buffer.from(recalculated),
+      Buffer.from(vault.hmac_signature)
+    );
+  } catch {
+    return false;
+  }
 };
 
 /* ================= CREATE VAULT ================= */
 
 exports.createVault = async (req, res) => {
   try {
-    const userId = req.user.id;
+    const userId = req.user?.id;
 
     const {
       encryptedBlob,
@@ -41,8 +45,30 @@ exports.createVault = async (req, res) => {
       releaseEmail
     } = req.body;
 
+    if (!userId) {
+      return res.status(401).json({ message: 'Unauthorized' });
+    }
+
     if (!encryptedBlob || !iv || !salt || !vaultType) {
       return res.status(400).json({ message: "Missing required fields" });
+    }
+
+    if (!['eternal', 'destroy', 'release'].includes(vaultType)) {
+      return res.status(400).json({ message: 'Invalid vault type' });
+    }
+
+    if (vaultType === 'release') {
+      if (!Number.isInteger(triggerDays) && !(typeof triggerDays === 'string' && /^\d+$/.test(triggerDays))) {
+        return res.status(400).json({ message: 'Valid trigger days required for release vault' });
+      }
+      if (!releaseEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(releaseEmail))) {
+        return res.status(400).json({ message: 'Valid release email required for release vault' });
+      }
+    }
+
+    // Basic sanity guard for malformed payloads while preserving encryption flow.
+    if (String(encryptedBlob).length > 14 * 1024 * 1024) {
+      return res.status(413).json({ message: 'Encrypted payload too large' });
     }
 
     const hmacSignature = generateHMAC(encryptedBlob, iv, salt);
@@ -58,8 +84,8 @@ exports.createVault = async (req, res) => {
         encryptedBlob,
         iv,
         salt,
-        triggerDays || null,
-        releaseEmail || null,
+        vaultType === 'release' ? Number(triggerDays) : null,
+        vaultType === 'release' ? releaseEmail : null,
         hmacSignature
       ]
     );

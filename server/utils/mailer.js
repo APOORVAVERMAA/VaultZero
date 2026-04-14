@@ -28,21 +28,21 @@ const transporter = nodemailer.createTransport({
 
 
 // ================= VERIFY CONNECTION =================
-transporter.verify((error, success) => {
-  if (error) {
-    logger.error(error, "❌ Email transporter failed");
-  } else {
-    logger.info("✅ Email server ready");
-  }
-});
+if (process.env.NODE_ENV !== 'test') {
+  transporter.verify((error) => {
+    if (error) {
+      logger.error(error, "❌ Email transporter failed");
+    } else {
+      logger.info("✅ Email server ready");
+    }
+  });
+}
 
 
 // ================= VERIFICATION EMAIL =================
 const sendVerificationEmail = async (to, fullName, verificationLink, meta = null) => {
   try {
-    console.log("📧 Sending verification email to:", to);
-
-    const firstName = esc(fullName.split(" ")[0]);
+    const firstName = esc((fullName || '').split(" ")[0] || 'there');
     const timeStr = formatTime(meta?.time);
     const locationStr = meta?.location ? esc(formatLocation(meta.location)) : null;
 
@@ -66,7 +66,7 @@ const sendVerificationEmail = async (to, fullName, verificationLink, meta = null
       html: wrapEmail(body),
     });
 
-    logger.info(`✅ Verification email sent to ${to}`);
+    logger.info({ to }, 'Verification email sent');
 
   } catch (error) {
     logger.error(error, "❌ Verification email failed");
@@ -77,8 +77,6 @@ const sendVerificationEmail = async (to, fullName, verificationLink, meta = null
 // ================= DEAD-MAN RELEASE EMAIL =================
 const sendReleaseEmail = async (to, vault, ownerEmail, releaseLink) => {
   try {
-    console.log("📧 Sending release email to:", to);
-
     const body = `
       ${badge('Dead-Man Vault Release', '#f59e0b')}
       ${heading('Secure Vault Released')}
@@ -108,7 +106,7 @@ const sendReleaseEmail = async (to, vault, ownerEmail, releaseLink) => {
       html: wrapEmail(body),
     });
 
-    logger.info(`✅ Release email sent to ${to}`);
+    logger.info({ to, vaultId: vault?.id }, 'Release email sent');
 
   } catch (error) {
     logger.error(error, "❌ Release email failed");

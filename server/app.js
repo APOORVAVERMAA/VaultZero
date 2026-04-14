@@ -11,7 +11,8 @@ const requiredEnv = [
 
 requiredEnv.forEach((key) => {
   if (!process.env[key]) {
-    console.error(`❌ Missing environment variable: ${key}`);
+    // logger is not initialized yet at this stage.
+    console.error(`Missing environment variable: ${key}`);
     process.exit(1);
   }
 });
@@ -102,8 +103,14 @@ const vaultRoutes = require('./routes/vaultRoutes');
 app.use('/api/vault', vaultRoutes);
 
 app.use((err, req, res, next) => {
-  console.error("GLOBAL ERROR:", err);
-  res.status(500).json({ message: "Server error" });
+  if (err && err.type === 'entity.too.large') {
+    return res.status(413).json({ message: 'Payload too large. Maximum request size is 15MB.' });
+  }
+
+  logger.error(err, 'Unhandled application error');
+  res.status(err?.status || 500).json({
+    message: err?.status && err.status < 500 ? err.message : 'Server error'
+  });
 });
 
 // ================= SERVER =================

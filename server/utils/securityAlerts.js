@@ -9,7 +9,20 @@ const transporter = nodemailer.createTransport({
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS,
   },
+  tls: {
+    rejectUnauthorized: false,
+  },
 });
+
+if (process.env.NODE_ENV !== 'test') {
+  transporter.verify((error) => {
+    if (error) {
+      logger.error(error, "Security alert transporter verification failed");
+      return;
+    }
+    logger.info("Security alert email transporter ready");
+  });
+}
 
 const EVENT_CONFIG = {
   vault_opened: {
@@ -82,6 +95,7 @@ const sendSecurityAlert = async (userEmail, eventType, vaultId, meta = null) => 
       subject: config.subject,
       html: wrapEmail(body),
     });
+    logger.info({ userEmail, eventType, vaultId }, 'Security alert email sent');
   } catch (err) {
     logger.error(err, `Failed to send security alert: ${eventType}`);
   }
@@ -111,6 +125,7 @@ const sendLoginAlert = async (userEmail, ip, userAgent, timestamp, location = nu
       subject: "VaultZero Security — New Login Detected",
       html: wrapEmail(body),
     });
+    logger.info({ userEmail }, 'Login alert email sent');
   } catch (err) {
     logger.error(err, "Failed to send login alert email");
   }

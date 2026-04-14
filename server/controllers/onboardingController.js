@@ -10,16 +10,22 @@ const logger = require("../utils/logger");
 */
 
 exports.completeOnboarding = async (req, res) => {
+  let conn;
+  let txStarted = false;
   try {
-    const userId = req.user.id;
+    const userId = req.user?.id;
 
     const { alternateEmail, questions } = req.body;
 
-    if (!alternateEmail) {
-      return res.status(400).json({ message: "Alternate email required" });
+    if (!userId) {
+      return res.status(401).json({ message: 'Unauthorized' });
     }
 
-    if (!questions || questions.length !== 3) {
+    if (!alternateEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(alternateEmail)) {
+      return res.status(400).json({ message: "Valid alternate email required" });
+    }
+
+    if (!Array.isArray(questions) || questions.length !== 3) {
       return res.status(400).json({ message: "Exactly 3 security questions required" });
     }
 
@@ -29,8 +35,17 @@ exports.completeOnboarding = async (req, res) => {
       }
     }
 
+    const uniqueQuestions = new Set(questions.map((q) => q.question.trim().toLowerCase()));
+    if (uniqueQuestions.size !== 3) {
+      return res.status(400).json({ message: "Security questions must be unique" });
+    }
+
+    conn = await db.connect();
+    await conn.query('BEGIN');
+    txStarted = true;
+
     // Update user
-    await db.query(
+    await conn.query(
       `UPDATE users 
        SET alternate_email = $1, 
            onboarding_completed = TRUE,
@@ -40,7 +55,7 @@ exports.completeOnboarding = async (req, res) => {
     );
 
     // Delete existing questions (safety)
-    await db.query(
+    await conn.query(
       `DELETE FROM security_questions WHERE user_id = $1`,
       [userId]
     );
@@ -49,18 +64,31 @@ exports.completeOnboarding = async (req, res) => {
     for (const q of questions) {
       const hashed = await bcrypt.hash(q.answer.trim(), 12);
 
-      await db.query(
+      await conn.query(
         `INSERT INTO security_questions (user_id, question_text, answer_hash)
          VALUES ($1, $2, $3)`,
         [userId, q.question, hashed]
       );
     }
 
+    await conn.query('COMMIT');
+
     res.json({ message: "Onboarding completed successfully" });
 
   } catch (error) {
+    if (conn && txStarted) {
+      try {
+        await conn.query('ROLLBACK');
+      } catch (rollbackError) {
+        logger.error(rollbackError, 'ONBOARDING ROLLBACK ERROR');
+      }
+    }
     logger.error(error, "ONBOARDING ERROR");
     res.status(500).json({ message: "Onboarding failed" });
+  } finally {
+    if (conn) {
+      conn.release();
+    }
   }
 };
 

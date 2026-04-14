@@ -11,10 +11,9 @@ const { getLocation } = require('../utils/geolocate');
 // ================= REGISTER =================
 exports.register = async (req, res) => {
   try {
-   const fullName = req.body.fullName || req.body.name;
-const { email, password } = req.body;
-
-    console.log("REGISTER HIT", req.body);
+    const fullName = (req.body.fullName || req.body.name || '').trim();
+    const email = (req.body.email || '').trim().toLowerCase();
+    const { password } = req.body;
 
     if (!fullName || !email || !password) {
       return res.status(400).json({ message: 'Full name, email and password required' });
@@ -31,11 +30,47 @@ const { email, password } = req.body;
     }
 
     const { rows: existing } = await db.query(
-      'SELECT id FROM users WHERE email = $1',
+      'SELECT id, email_verified FROM users WHERE email = $1',
       [email]
     );
 
     if (existing.length > 0) {
+      if (!existing[0].email_verified) {
+        const token = crypto.randomBytes(32).toString('hex');
+        const expires = new Date(Date.now() + 24 * 60 * 60 * 1000);
+        await db.query(
+          'UPDATE users SET verification_token = $1, verification_token_expires = $2 WHERE id = $3',
+          [token, expires, existing[0].id]
+        );
+
+        const verificationLink = `${process.env.FRONTEND_URL}/verify-email?token=${token}`;
+
+        (async () => {
+          try {
+            const ip = req.headers['x-forwarded-for'] || req.ip;
+            let location = { city: 'Unknown', region: '', country: 'Unknown' };
+            try {
+              location = await getLocation(String(ip));
+            } catch (geoErr) {
+              logger.warn(geoErr, 'Geolocation lookup failed during register resend');
+            }
+
+            await sendVerificationEmail(email, fullName, verificationLink, {
+              ip,
+              location,
+              time: new Date()
+            });
+          } catch (mailErr) {
+            logger.error(mailErr, 'Verification resend failed for existing unverified user');
+          }
+        })();
+
+        return res.status(200).json({
+          message: 'Verification email resent. Check your inbox.',
+          requiresVerification: true
+        });
+      }
+
       return res.status(400).json({ message: 'User already exists' });
     }
 
@@ -55,12 +90,12 @@ const { email, password } = req.body;
     (async () => {
       try {
         const ip = req.headers['x-forwarded-for'] || req.ip;
-        let location = "Unknown";
+        let location = { city: 'Unknown', region: '', country: 'Unknown' };
 
         try {
-          location = await getLocation(ip);
-        } catch {
-          location = "Unavailable";
+          location = await getLocation(String(ip));
+        } catch (geoErr) {
+          logger.warn(geoErr, 'Geolocation lookup failed during register');
         }
 
         const verificationLink = `${process.env.FRONTEND_URL}/verify-email?token=${verificationToken}`;
@@ -72,7 +107,7 @@ const { email, password } = req.body;
         });
 
       } catch (err) {
-        logger.error(err, "Email send failed");
+        logger.error(err, 'Verification email send failed');
       }
     })();
 
@@ -82,9 +117,8 @@ const { email, password } = req.body;
     });
 
   } catch (error) {
-    console.error("REGISTER ERROR:", error);
     logger.error(error, "Registration error");
-    res.status(500).json({ message: error.message });
+    res.status(500).json({ message: 'Server error' });
   }
 };
 
@@ -165,16 +199,15 @@ exports.resendVerification = async (req, res) => {
     (async () => {
       try {
         const ip = req.headers['x-forwarded-for'] || req.ip;
-        let location = "Unknown";
+        let location = { city: 'Unknown', region: '', country: 'Unknown' };
 
         try {
-          location = await getLocation(ip);
-        } catch {
-          location = "Unavailable";
+          location = await getLocation(String(ip));
+        } catch (geoErr) {
+          logger.warn(geoErr, 'Geolocation lookup failed during resend verification');
         }
 
         const verificationLink = `${process.env.FRONTEND_URL}/verify-email?token=${token}`;
-        console.log("Sending verification email to:", email);
 
         await sendVerificationEmail(
           email,
@@ -204,7 +237,12 @@ exports.resendVerification = async (req, res) => {
 // ================= LOGIN =================
 exports.login = async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const email = (req.body.email || '').trim().toLowerCase();
+    const { password } = req.body;
+
+    if (!email || !password) {
+      return res.status(400).json({ message: 'Email and password required.' });
+    }
 
     const { rows: users } = await db.query(
       'SELECT * FROM users WHERE email = $1',
@@ -223,13 +261,13 @@ exports.login = async (req, res) => {
       return res.status(400).json({ message: 'Invalid credentials' });
     }
 
-    // if (!user.email_verified) {
-    //   return res.status(403).json({
-    //     message: 'Please verify your email before signing in.',
-    //     requiresVerification: true,
-    //     email: user.email
-    //   });
-    // }
+    if (!user.email_verified) {
+      return res.status(403).json({
+        message: 'Please verify your email before signing in.',
+        requiresVerification: true,
+        email: user.email
+      });
+    }
 
     await db.query(
       "UPDATE users SET last_login = NOW() WHERE id = $1",
@@ -250,9 +288,9 @@ exports.login = async (req, res) => {
 
         let location = "Unknown";
         try {
-          location = await getLocation(ip);
-        } catch {
-          location = "Unavailable";
+          location = await getLocation(String(ip));
+        } catch (geoErr) {
+          logger.warn(geoErr, 'Geolocation lookup failed during login alert');
         }
 
         await sendLoginAlert(user.email, ip, ua, new Date(), location);

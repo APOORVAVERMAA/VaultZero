@@ -182,7 +182,7 @@ function CreateVaultModal({
                 ) : (
                   <div className="text-center">
                     <p className="text-sm text-gray-300">Click to select a file</p>
-                    <p className="text-xs text-gray-500 font-mono mt-1">Images, videos, audio, documents · Max 15MB</p>
+                    <p className="text-xs text-gray-500 font-mono mt-1">Images, videos, audio, documents · Max 10MB</p>
                   </div>
                 )}
                 <input

@@ -17,9 +17,6 @@ function Register() {
   const handleRegister = async (e) => {
     if (e) e.preventDefault();
 
-    console.log("Submitting form...");
-    console.log("API URL:", process.env.REACT_APP_API_URL);
-
     if (!fullName || !email || !password) {
       setError("All fields are required");
       return;
@@ -29,15 +26,12 @@ function Register() {
     setLoading(true);
 
     try {
-      console.log("Calling API...");
-
       const res = await api.post("/api/auth/register", {
         fullName,
+        name: fullName,
         email,
         password,
       });
-
-      console.log("Response:", res.data);
 
       if (res.data.requiresVerification) {
         setVerificationSent(true);
@@ -45,7 +39,6 @@ function Register() {
         navigate("/");
       }
     } catch (err) {
-      console.error("Register error:", err);
       setError(
         err.response?.data?.message ||
           "Registration failed. Please try again."
@@ -60,7 +53,7 @@ function Register() {
     try {
       await api.post("/api/auth/resend-verification", { email });
     } catch {
-      console.error("Resend failed");
+      setError("Failed to resend verification email.");
     } finally {
       setResending(false);
     }
