@@ -1,6 +1,7 @@
 const logger = require("./logger");
 const nodemailer = require("nodemailer");
 const dns = require("dns");
+const dnsPromises = require("dns").promises;
 
 const forceIpv4 = process.env.SMTP_FORCE_IPV4 !== "false";
 
@@ -20,13 +21,16 @@ const smtpHostIp = process.env.SMTP_HOST_IP;
 
 let verifyPromise = null;
 let verified = false;
+let lastWorkingHost = null;
+let candidateCache = [];
+let candidateCacheAt = 0;
 
 const resolveIpv4 = (hostname, _opts, cb) => {
   dns.lookup(hostname, { family: 4, all: false }, cb);
 };
 
-const smtpTransport = nodemailer.createTransport({
-  host: smtpHostIp || smtpHost,
+const createTransport = (host) => nodemailer.createTransport({
+  host,
   port: smtpPort,
   secure: smtpSecure,
   requireTLS: smtpRequireTLS,
@@ -49,6 +53,42 @@ const smtpTransport = nodemailer.createTransport({
   socketTimeout: 30000,
 });
 
+const buildCandidateHosts = async () => {
+  const now = Date.now();
+  if (candidateCache.length && now - candidateCacheAt < 10 * 60 * 1000) {
+    return [...candidateCache];
+  }
+
+  const candidates = [];
+  if (smtpHostIp) {
+    candidates.push(smtpHostIp);
+  }
+
+  try {
+    if (forceIpv4) {
+      const ipv4Records = await dnsPromises.resolve4(smtpHost);
+      candidates.push(...ipv4Records);
+    }
+  } catch (err) {
+    logger.warn({ err, smtpHost }, "Failed resolving SMTP host IPv4 records");
+  }
+
+  // Hostname fallback keeps compatibility with environments where DNS is healthy.
+  candidates.push(smtpHost);
+
+  // de-duplicate while preserving order
+  const deduped = [...new Set(candidates.filter(Boolean))];
+  candidateCache = deduped;
+  candidateCacheAt = now;
+  return deduped;
+};
+
+const prioritizedHosts = async () => {
+  const candidates = await buildCandidateHosts();
+  if (!lastWorkingHost) return candidates;
+  return [lastWorkingHost, ...candidates.filter((c) => c !== lastWorkingHost)];
+};
+
 const verifyEmailTransport = async () => {
   if (process.env.NODE_ENV === "test" || verified) {
     return;
@@ -61,12 +101,30 @@ const verifyEmailTransport = async () => {
 
   verifyPromise = (async () => {
     try {
-      await smtpTransport.verify();
+      const hosts = await prioritizedHosts();
+      let verifiedHost = null;
+
+      for (const host of hosts) {
+        try {
+          const transport = createTransport(host);
+          await transport.verify();
+          verifiedHost = host;
+          break;
+        } catch (verifyErr) {
+          logger.warn({ host, err: verifyErr }, "SMTP verify failed for host candidate");
+        }
+      }
+
+      if (!verifiedHost) {
+        throw new Error("All SMTP host candidates failed verification");
+      }
+
+      lastWorkingHost = verifiedHost;
       verified = true;
       logger.info(
         {
           provider: "gmail-smtp-app-password",
-          host: smtpHostIp || smtpHost,
+          host: verifiedHost,
           port: smtpPort,
           secure: smtpSecure,
           requireTLS: smtpRequireTLS,
@@ -97,24 +155,35 @@ const verifyEmailTransport = async () => {
 };
 
 const sendMailLogged = async (mailOptions, logContext = {}) => {
-  try {
-    const info = await smtpTransport.sendMail(mailOptions);
-    logger.info(
-      {
-        ...logContext,
-        messageId: info.messageId,
-        accepted: info.accepted,
-        rejected: info.rejected,
-        response: info.response,
-        provider: "gmail-smtp-app-password",
-      },
-      "Email send success"
-    );
-    return info;
-  } catch (error) {
-    logger.error({ ...logContext, err: error }, "Email send failed");
-    throw error;
+  const hosts = await prioritizedHosts();
+  let lastError = null;
+
+  for (const host of hosts) {
+    try {
+      const transport = createTransport(host);
+      const info = await transport.sendMail(mailOptions);
+      lastWorkingHost = host;
+      logger.info(
+        {
+          ...logContext,
+          host,
+          messageId: info.messageId,
+          accepted: info.accepted,
+          rejected: info.rejected,
+          response: info.response,
+          provider: "gmail-smtp-app-password",
+        },
+        "Email send success"
+      );
+      return info;
+    } catch (error) {
+      lastError = error;
+      logger.warn({ ...logContext, host, err: error }, "Email send failed for SMTP host candidate");
+    }
   }
+
+  logger.error({ ...logContext, err: lastError }, "Email send failed");
+  throw lastError;
 };
 
 module.exports = {
