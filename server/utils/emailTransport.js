@@ -18,10 +18,11 @@ const smtpPort = Number(process.env.SMTP_PORT || 587);
 const smtpSecure = process.env.SMTP_SECURE === "true";
 const smtpRequireTLS = process.env.SMTP_REQUIRE_TLS !== "false";
 const smtpHostIp = process.env.SMTP_HOST_IP;
+const allowAltPorts = process.env.SMTP_DISABLE_ALT_PORTS !== "true";
 
 let verifyPromise = null;
 let verified = false;
-let lastWorkingHost = null;
+let lastWorkingEndpoint = null;
 let candidateCache = [];
 let candidateCacheAt = 0;
 
@@ -29,11 +30,11 @@ const resolveIpv4 = (hostname, _opts, cb) => {
   dns.lookup(hostname, { family: 4, all: false }, cb);
 };
 
-const createTransport = (host) => nodemailer.createTransport({
-  host,
-  port: smtpPort,
-  secure: smtpSecure,
-  requireTLS: smtpRequireTLS,
+const createTransport = (endpoint) => nodemailer.createTransport({
+  host: endpoint.host,
+  port: endpoint.port,
+  secure: endpoint.secure,
+  requireTLS: endpoint.requireTLS,
   dnsTimeout: 10000,
   // Force IPv4 to avoid Render IPv6 ENETUNREACH when reaching Gmail SMTP.
   ...(forceIpv4 ? { lookup: resolveIpv4 } : {}),
@@ -43,7 +44,7 @@ const createTransport = (host) => nodemailer.createTransport({
   },
   tls: {
     rejectUnauthorized: false,
-    servername: smtpHost,
+    servername: endpoint.servername || smtpHost,
   },
   pool: true,
   maxConnections: 3,
@@ -53,40 +54,84 @@ const createTransport = (host) => nodemailer.createTransport({
   socketTimeout: 30000,
 });
 
-const buildCandidateHosts = async () => {
+const endpointKey = (endpoint) => `${endpoint.host}:${endpoint.port}:${endpoint.secure ? "tls" : "starttls"}`;
+
+const buildEndpointCandidates = async () => {
   const now = Date.now();
   if (candidateCache.length && now - candidateCacheAt < 10 * 60 * 1000) {
     return [...candidateCache];
   }
 
-  const candidates = [];
-  if (smtpHostIp) {
-    candidates.push(smtpHostIp);
-  }
+  const hosts = [];
+  if (smtpHostIp) hosts.push(smtpHostIp);
 
   try {
     if (forceIpv4) {
       const ipv4Records = await dnsPromises.resolve4(smtpHost);
-      candidates.push(...ipv4Records);
+      hosts.push(...ipv4Records);
     }
   } catch (err) {
     logger.warn({ err, smtpHost }, "Failed resolving SMTP host IPv4 records");
   }
 
   // Hostname fallback keeps compatibility with environments where DNS is healthy.
-  candidates.push(smtpHost);
+  hosts.push(smtpHost);
+
+  const uniqueHosts = [...new Set(hosts.filter(Boolean))];
+  const endpoints = [];
+
+  for (const host of uniqueHosts) {
+    endpoints.push({
+      host,
+      port: smtpPort,
+      secure: smtpSecure,
+      requireTLS: smtpRequireTLS,
+      servername: smtpHost,
+    });
+
+    if (allowAltPorts) {
+      // Fallback endpoint: implicit TLS mode on 465 for environments where 587 is blocked.
+      endpoints.push({
+        host,
+        port: 465,
+        secure: true,
+        requireTLS: false,
+        servername: smtpHost,
+      });
+      // Fallback endpoint: explicit STARTTLS mode on 587 for environments where 465 is blocked.
+      endpoints.push({
+        host,
+        port: 587,
+        secure: false,
+        requireTLS: true,
+        servername: smtpHost,
+      });
+    }
+  }
 
   // de-duplicate while preserving order
-  const deduped = [...new Set(candidates.filter(Boolean))];
+  const deduped = [];
+  const seen = new Set();
+  for (const endpoint of endpoints) {
+    const key = endpointKey(endpoint);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    deduped.push(endpoint);
+  }
+
   candidateCache = deduped;
   candidateCacheAt = now;
-  return deduped;
+  return [...deduped];
 };
 
-const prioritizedHosts = async () => {
-  const candidates = await buildCandidateHosts();
-  if (!lastWorkingHost) return candidates;
-  return [lastWorkingHost, ...candidates.filter((c) => c !== lastWorkingHost)];
+const prioritizedEndpoints = async () => {
+  const endpoints = await buildEndpointCandidates();
+  if (!lastWorkingEndpoint) return endpoints;
+
+  const preferredKey = endpointKey(lastWorkingEndpoint);
+  const preferred = endpoints.find((e) => endpointKey(e) === preferredKey);
+  if (!preferred) return endpoints;
+  return [preferred, ...endpoints.filter((e) => endpointKey(e) !== preferredKey)];
 };
 
 const verifyEmailTransport = async () => {
@@ -101,34 +146,45 @@ const verifyEmailTransport = async () => {
 
   verifyPromise = (async () => {
     try {
-      const hosts = await prioritizedHosts();
-      let verifiedHost = null;
+      const endpoints = await prioritizedEndpoints();
+      let verifiedEndpoint = null;
 
-      for (const host of hosts) {
+      for (const endpoint of endpoints) {
         try {
-          const transport = createTransport(host);
+          const transport = createTransport(endpoint);
           await transport.verify();
-          verifiedHost = host;
+          verifiedEndpoint = endpoint;
           break;
         } catch (verifyErr) {
-          logger.warn({ host, err: verifyErr }, "SMTP verify failed for host candidate");
+          logger.warn(
+            {
+              endpoint: {
+                host: endpoint.host,
+                port: endpoint.port,
+                secure: endpoint.secure,
+              },
+              err: verifyErr,
+            },
+            "SMTP verify failed for endpoint candidate"
+          );
         }
       }
 
-      if (!verifiedHost) {
-        throw new Error("All SMTP host candidates failed verification");
+      if (!verifiedEndpoint) {
+        throw new Error("All SMTP endpoint candidates failed verification");
       }
 
-      lastWorkingHost = verifiedHost;
+      lastWorkingEndpoint = verifiedEndpoint;
       verified = true;
       logger.info(
         {
           provider: "gmail-smtp-app-password",
-          host: verifiedHost,
-          port: smtpPort,
-          secure: smtpSecure,
-          requireTLS: smtpRequireTLS,
+          host: verifiedEndpoint.host,
+          port: verifiedEndpoint.port,
+          secure: verifiedEndpoint.secure,
+          requireTLS: verifiedEndpoint.requireTLS,
           forceIpv4,
+          allowAltPorts,
           emailUser: process.env.EMAIL_USER,
           sender: process.env.EMAIL_FROM || process.env.EMAIL_USER,
         },
@@ -155,18 +211,20 @@ const verifyEmailTransport = async () => {
 };
 
 const sendMailLogged = async (mailOptions, logContext = {}) => {
-  const hosts = await prioritizedHosts();
+  const endpoints = await prioritizedEndpoints();
   let lastError = null;
 
-  for (const host of hosts) {
+  for (const endpoint of endpoints) {
     try {
-      const transport = createTransport(host);
+      const transport = createTransport(endpoint);
       const info = await transport.sendMail(mailOptions);
-      lastWorkingHost = host;
+      lastWorkingEndpoint = endpoint;
       logger.info(
         {
           ...logContext,
-          host,
+          host: endpoint.host,
+          port: endpoint.port,
+          secure: endpoint.secure,
           messageId: info.messageId,
           accepted: info.accepted,
           rejected: info.rejected,
@@ -178,7 +236,16 @@ const sendMailLogged = async (mailOptions, logContext = {}) => {
       return info;
     } catch (error) {
       lastError = error;
-      logger.warn({ ...logContext, host, err: error }, "Email send failed for SMTP host candidate");
+      logger.warn(
+        {
+          ...logContext,
+          host: endpoint.host,
+          port: endpoint.port,
+          secure: endpoint.secure,
+          err: error,
+        },
+        "Email send failed for SMTP endpoint candidate"
+      );
     }
   }
 
