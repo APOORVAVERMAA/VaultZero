@@ -11,7 +11,8 @@ const { getLocation } = require('../utils/geolocate');
 // ================= REGISTER =================
 exports.register = async (req, res) => {
   try {
-    const { fullName, email, password } = req.body;
+   const fullName = req.body.fullName || req.body.name;
+const { email, password } = req.body;
 
     console.log("REGISTER HIT", req.body);
 
