@@ -222,13 +222,13 @@ exports.login = async (req, res) => {
       return res.status(400).json({ message: 'Invalid credentials' });
     }
 
-    // if (!user.email_verified) {
-    //   return res.status(403).json({
-    //     message: 'Please verify your email before signing in.',
-    //     requiresVerification: true,
-    //     email: user.email
-    //   });
-    // }
+    if (!user.email_verified) {
+      return res.status(403).json({
+        message: 'Please verify your email before signing in.',
+        requiresVerification: true,
+        email: user.email
+      });
+    }
 
     await db.query(
       "UPDATE users SET last_login = NOW() WHERE id = $1",
