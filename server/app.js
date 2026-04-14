@@ -45,8 +45,6 @@ app.use(cors({
   allowedHeaders: ["Content-Type", "Authorization"]
 }));
 
-// 🔥 IMPORTANT: HANDLE PREFLIGHT
-app.options("/(.*)", cors());
 // Middleware
 app.use(helmet());
 app.use(express.json({ limit: '50mb' }));
