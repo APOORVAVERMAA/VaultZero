@@ -173,6 +173,7 @@ exports.resendVerification = async (req, res) => {
         }
 
         const verificationLink = `${process.env.FRONTEND_URL}/verify-email?token=${token}`;
+        console.log("Sending verification email to:", email);
 
         await sendVerificationEmail(
           email,
