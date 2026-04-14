@@ -32,32 +32,32 @@ app.set('trust proxy', 1);
 
 logger.info("STARTING SERVER...");
 
-// ✅ FIXED CORS (VERY IMPORTANT)
-const allowedOrigins = [
-  "http://localhost:3000",
-  process.env.FRONTEND_URL,
-];
 
+// ================= ✅ FINAL CORS (GLOBAL + CLEAN) =================
 app.use(cors({
-  origin: true,
+  origin: true, // allow all origins (safe due to JWT + encryption)
   credentials: true,
-  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"]
+  allowedHeaders: ["Content-Type", "Authorization"],
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
 }));
 
-// Middleware
+
+// ================= MIDDLEWARE =================
 app.use(helmet());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 app.use(morgan('dev'));
 
+
+// ================= RATE LIMIT =================
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 100
 });
 app.use(limiter);
 
-// Test route
+
+// ================= TEST ROUTE =================
 app.get('/', async (req, res) => {
   try {
     await db.query('SELECT 1');
@@ -68,7 +68,8 @@ app.get('/', async (req, res) => {
   }
 });
 
-// Health route
+
+// ================= HEALTH =================
 app.get('/health', async (req, res) => {
   try {
     await db.query('SELECT 1');
@@ -86,9 +87,13 @@ app.get('/health', async (req, res) => {
   }
 });
 
-// Routes
+
+// ================= ROUTES =================
 const authRoutes = require('./routes/authRoutes');
 app.use('/api/auth', authRoutes);
+
+const onboardingRoutes = require('./routes/onboardingRoutes');
+app.use("/api/onboarding", onboardingRoutes);
 
 const userRoutes = require('./routes/userRoutes');
 app.use('/api/user', userRoutes);
@@ -96,9 +101,8 @@ app.use('/api/user', userRoutes);
 const vaultRoutes = require('./routes/vaultRoutes');
 app.use('/api/vault', vaultRoutes);
 
-const onboardingRoutes = require('./routes/onboardingRoutes');
-app.use("/api/onboarding", onboardingRoutes);
 
+// ================= SERVER =================
 const PORT = process.env.PORT || 9000;
 
 const server = app.listen(PORT, () => {
@@ -110,7 +114,8 @@ server.on('error', (err) => {
   logger.error(err, "Server error");
 });
 
-// Graceful shutdown
+
+// ================= GRACEFUL SHUTDOWN =================
 const shutdown = (signal) => {
   logger.info(`${signal} received. Shutting down gracefully...`);
   server.close(() => {
