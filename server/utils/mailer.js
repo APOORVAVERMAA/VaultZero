@@ -17,8 +17,8 @@ const { formatLocation, formatTime } = require("./geolocate");
 // ================= TRANSPORTER =================
 const transporter = nodemailer.createTransport({
   host: "smtp.gmail.com",
-  port: 465,
-  secure: true, // VERY IMPORTANT
+  port: 587,
+  secure: false, // VERY IMPORTANT
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS,
