@@ -14,6 +14,12 @@ function Register() {
   const [resending, setResending] = useState(false);
   const navigate = useNavigate();
 
+  const handleKeyDown = (e) => {
+    if (e.key === "Enter") {
+      handleRegister();
+    }
+  };
+
   const handleRegister = async (e) => {
     if (e) e.preventDefault();
 
@@ -67,11 +73,14 @@ function Register() {
             <h2 className="text-2xl font-bold text-white mb-2 font-mono">
               Check Your Email
             </h2>
-            <p className="text-indigo-400 font-mono text-sm mb-6">{email}</p>
+            <p className="text-indigo-400 font-mono text-sm mb-2">{email}</p>
+            <p className="text-gray-400 text-sm mb-6 font-mono">
+              Verification link sent. Please verify before signing in.
+            </p>
             <button
               onClick={handleResend}
               disabled={resending}
-              className="text-indigo-400"
+              className="text-xs font-mono text-indigo-400 hover:text-indigo-300 transition-colors disabled:opacity-50"
             >
               {resending ? "Sending..." : "Resend Email"}
             </button>
@@ -86,39 +95,67 @@ function Register() {
       <h2 className="text-3xl font-bold text-white mb-2 font-mono">
         Create Account
       </h2>
+      <p className="text-gray-400 text-base mb-8 font-mono">Register to secure your encrypted vaults.</p>
 
-      {/* ✅ FORM FIX */}
-      <form onSubmit={handleRegister} className="space-y-5">
+      <form onSubmit={handleRegister} className="space-y-5" onKeyDown={handleKeyDown}>
+        <div>
+          <label className="text-sm text-gray-300 font-medium block mb-2">Full Name</label>
+          <input
+            className="w-full p-3.5 bg-white/5 border border-white/10 rounded-xl focus:outline-none focus:border-indigo-500 text-white placeholder-gray-500 transition text-base"
+            placeholder="John Doe"
+            value={fullName}
+            onChange={(e) => setFullName(e.target.value)}
+          />
+        </div>
 
-        <input
-          placeholder="Full Name"
-          value={fullName}
-          onChange={(e) => setFullName(e.target.value)}
-        />
+        <div>
+          <label className="text-sm text-gray-300 font-medium block mb-2">Email</label>
+          <input
+            className="w-full p-3.5 bg-white/5 border border-white/10 rounded-xl focus:outline-none focus:border-indigo-500 text-white placeholder-gray-500 transition text-base"
+            placeholder="you@example.com"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+          />
+        </div>
 
-        <input
-          placeholder="Email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-        />
+        <div>
+          <label className="text-sm text-gray-300 font-medium block mb-2">Password</label>
+          <input
+            type="password"
+            className="w-full p-3.5 bg-white/5 border border-white/10 rounded-xl focus:outline-none focus:border-indigo-500 text-white placeholder-gray-500 transition text-base"
+            placeholder="••••••••"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+          />
+        </div>
 
-        <input
-          type="password"
-          placeholder="Password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-        />
+        {error && (
+          <motion.div
+            initial={{ opacity: 0, y: -5 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm text-center"
+          >
+            {error}
+          </motion.div>
+        )}
 
-        {error && <p className="text-red-400">{error}</p>}
-
-        {/* ✅ IMPORTANT: type="submit" */}
-        <button type="submit" disabled={loading}>
+        <motion.button
+          whileHover={{ scale: 1.01 }}
+          whileTap={{ scale: 0.99 }}
+          type="submit"
+          disabled={loading}
+          className="w-full bg-indigo-600 hover:bg-indigo-500 transition-colors p-3.5 rounded-xl font-semibold text-white text-base disabled:opacity-50"
+        >
           {loading ? "Creating..." : "Create Account"}
-        </button>
-
+        </motion.button>
       </form>
 
-      <Link to="/">Sign in</Link>
+      <p className="text-gray-400 mt-8 text-sm">
+        Already have an account?{" "}
+        <Link to="/" className="text-indigo-400 hover:text-indigo-300 transition-colors font-medium">
+          Sign in
+        </Link>
+      </p>
     </AuthLayout>
   );
 }
