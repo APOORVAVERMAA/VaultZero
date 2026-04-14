@@ -46,28 +46,31 @@ exports.register = async (req, res) => {
           [token, expires, existing[0].id]
         );
 
-        // 🔥 FORCE EMAIL EXECUTION (SAFE)
-        setTimeout(async () => {
+        // Non-blocking resend email dispatch
+        (async () => {
           try {
-            console.log("📧 Resending verification to:", email);
+            const ip = req.headers['x-forwarded-for'] || req.ip;
+            let location = { city: 'Unknown', region: '', country: 'Unknown' };
+            try {
+              location = await getLocation(String(ip));
+            } catch (geoErr) {
+              logger.warn(geoErr, 'Geolocation lookup failed during register resend');
+            }
 
             await sendVerificationEmail(
               email,
               fullName,
               `${process.env.FRONTEND_URL}/verify-email?token=${token}`,
               {
-                ip: req.ip,
-                location: "Unknown",
+                ip,
+                location,
                 time: new Date()
               }
             );
-
-            console.log("✅ RESEND EMAIL SENT");
-
           } catch (err) {
-            console.error("❌ RESEND EMAIL FAILED:", err);
+            logger.error(err, 'Verification resend failed for existing unverified user');
           }
-        }, 0);
+        })();
 
         return res.status(200).json({
           message: 'Verification email resent. Check your inbox.',
@@ -91,28 +94,31 @@ exports.register = async (req, res) => {
       [fullName, email, hashedPassword, verificationToken, tokenExpires]
     );
 
-    // 🔥 FORCE EMAIL EXECUTION (CRITICAL FIX)
-    setTimeout(async () => {
+    // Non-blocking verification email dispatch
+    (async () => {
       try {
-        console.log("📧 Sending verification email to:", email);
+        const ip = req.headers['x-forwarded-for'] || req.ip;
+        let location = { city: 'Unknown', region: '', country: 'Unknown' };
+        try {
+          location = await getLocation(String(ip));
+        } catch (geoErr) {
+          logger.warn(geoErr, 'Geolocation lookup failed during register');
+        }
 
         await sendVerificationEmail(
           email,
           fullName,
           `${process.env.FRONTEND_URL}/verify-email?token=${verificationToken}`,
           {
-            ip: req.ip,
-            location: "Unknown",
+            ip,
+            location,
             time: new Date()
           }
         );
-
-        console.log("✅ EMAIL SENT SUCCESSFULLY");
-
       } catch (err) {
-        console.error("❌ EMAIL SEND FAILED:", err);
+        logger.error(err, 'Verification email send failed');
       }
-    }, 0);
+    })();
 
     res.status(201).json({
       message: 'Verification email sent. Check your inbox.',
@@ -198,28 +204,31 @@ exports.resendVerification = async (req, res) => {
       [token, expires, users[0].id]
     );
 
-    // 🔥 FORCE EMAIL EXECUTION
-    setTimeout(async () => {
+    // Non-blocking resend email dispatch
+    (async () => {
       try {
-        console.log("📧 Resend verification to:", email);
+        const ip = req.headers['x-forwarded-for'] || req.ip;
+        let location = { city: 'Unknown', region: '', country: 'Unknown' };
+        try {
+          location = await getLocation(String(ip));
+        } catch (geoErr) {
+          logger.warn(geoErr, 'Geolocation lookup failed during resend verification');
+        }
 
         await sendVerificationEmail(
           email,
           users[0].full_name,
           `${process.env.FRONTEND_URL}/verify-email?token=${token}`,
           {
-            ip: req.ip,
-            location: "Unknown",
+            ip,
+            location,
             time: new Date()
           }
         );
-
-        console.log("✅ RESEND EMAIL SENT");
-
       } catch (err) {
-        console.error("❌ RESEND EMAIL FAILED:", err);
+        logger.error(err, "Resend verification email failed");
       }
-    }, 0);
+    })();
 
     res.json({ message: 'Verification email sent. Check your inbox.' });
 
@@ -276,14 +285,22 @@ exports.login = async (req, res) => {
       { expiresIn: '1d' }
     );
 
-    // 🔥 NON-BLOCKING LOGIN ALERT
-    setTimeout(async () => {
+    // Non-blocking login alert dispatch
+    (async () => {
       try {
-        await sendLoginAlert(user.email, req.ip, req.headers['user-agent'], new Date(), "Unknown");
+        const ip = req.headers['x-forwarded-for'] || req.ip;
+        const userAgent = req.headers['user-agent'] || 'Unknown device';
+        let location = { city: 'Unknown', region: '', country: 'Unknown' };
+        try {
+          location = await getLocation(String(ip));
+        } catch (geoErr) {
+          logger.warn(geoErr, 'Geolocation lookup failed during login alert');
+        }
+        await sendLoginAlert(user.email, ip, userAgent, new Date(), location);
       } catch (err) {
-        console.error("❌ LOGIN ALERT FAILED:", err);
+        logger.error(err, "Login alert failed");
       }
-    }, 0);
+    })();
 
     res.json({
       token,

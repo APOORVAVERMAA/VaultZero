@@ -1,28 +1,11 @@
-const nodemailer = require("nodemailer");
 const logger = require("./logger");
+const { sendMailLogged, verifyEmailTransport } = require("./emailTransport");
 const { wrapEmail, infoTable, heading, subtext, badge, warningBox, esc } = require("./emailTemplate");
 const { formatLocation, formatTime } = require("./geolocate");
 
-const transporter = nodemailer.createTransport({
-  service: "gmail",
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-  tls: {
-    rejectUnauthorized: false,
-  },
-});
+verifyEmailTransport();
 
-if (process.env.NODE_ENV !== 'test') {
-  transporter.verify((error) => {
-    if (error) {
-      logger.error(error, "Security alert transporter verification failed");
-      return;
-    }
-    logger.info("Security alert email transporter ready");
-  });
-}
+const FROM_ADDRESS = process.env.EMAIL_FROM || process.env.EMAIL_USER;
 
 const EVENT_CONFIG = {
   vault_opened: {
@@ -89,13 +72,12 @@ const sendSecurityAlert = async (userEmail, eventType, vaultId, meta = null) => 
       ${warningBox('If this was not you, immediately change your password and review your account activity.')}
     `;
 
-    await transporter.sendMail({
-      from: `"VaultZero Security" <${process.env.EMAIL_USER}>`,
+    await sendMailLogged({
+      from: `"VaultZero Security" <${FROM_ADDRESS}>`,
       to: userEmail,
       subject: config.subject,
       html: wrapEmail(body),
-    });
-    logger.info({ userEmail, eventType, vaultId }, 'Security alert email sent');
+    }, { type: "security-alert", userEmail, eventType, vaultId });
   } catch (err) {
     logger.error(err, `Failed to send security alert: ${eventType}`);
   }
@@ -119,13 +101,12 @@ const sendLoginAlert = async (userEmail, ip, userAgent, timestamp, location = nu
       ${warningBox('If this was not you, immediately change your password and secure your account.')}
     `;
 
-    await transporter.sendMail({
-      from: `"VaultZero Security" <${process.env.EMAIL_USER}>`,
+    await sendMailLogged({
+      from: `"VaultZero Security" <${FROM_ADDRESS}>`,
       to: userEmail,
       subject: "VaultZero Security — New Login Detected",
       html: wrapEmail(body),
-    });
-    logger.info({ userEmail }, 'Login alert email sent');
+    }, { type: "login-alert", userEmail });
   } catch (err) {
     logger.error(err, "Failed to send login alert email");
   }

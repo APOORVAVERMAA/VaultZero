@@ -1,5 +1,5 @@
-const nodemailer = require("nodemailer");
 const logger = require("./logger");
+const { sendMailLogged, verifyEmailTransport } = require("./emailTransport");
 const {
   wrapEmail,
   infoTable,
@@ -13,36 +13,9 @@ const {
 } = require("./emailTemplate");
 const { formatLocation, formatTime } = require("./geolocate");
 
+verifyEmailTransport();
 
-// ================= TRANSPORTER =================
-const transporter = nodemailer.createTransport({
-  host: "smtp.gmail.com",
-  port: 587,
-  secure: false, // VERY IMPORTANT
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-});
-
-transporter.verify((error, success) => {
-  if (error) {
-    console.error("❌ EMAIL ERROR:", error);
-  } else {
-    console.log("✅ EMAIL SERVER READY");
-  }
-});
-
-// ================= VERIFY CONNECTION =================
-if (process.env.NODE_ENV !== 'test') {
-  transporter.verify((error) => {
-    if (error) {
-      logger.error(error, "❌ Email transporter failed");
-    } else {
-      logger.info("✅ Email server ready");
-    }
-  });
-}
+const FROM_ADDRESS = process.env.EMAIL_FROM || process.env.EMAIL_USER;
 
 
 // ================= VERIFICATION EMAIL =================
@@ -65,17 +38,15 @@ const sendVerificationEmail = async (to, fullName, verificationLink, meta = null
       ${noteBox('This link expires in <strong style="color:#e5e7eb;">24 hours</strong>. If you didn\'t create a VaultZero account, you can safely ignore this email.')}
     `;
 
-    await transporter.sendMail({
-      from: `"VaultZero Security" <${process.env.EMAIL_USER}>`,
+    await sendMailLogged({
+      from: `"VaultZero Security" <${FROM_ADDRESS}>`,
       to,
       subject: "Verify Your Email — VaultZero",
       html: wrapEmail(body),
-    });
-
-    logger.info({ to }, 'Verification email sent');
+    }, { type: "verification", to });
 
   } catch (error) {
-    logger.error(error, "❌ Verification email failed");
+    logger.error(error, "Verification email failed");
   }
 };
 
@@ -105,17 +76,15 @@ const sendReleaseEmail = async (to, vault, ownerEmail, releaseLink) => {
       ${noteBox('AES-256-GCM • PBKDF2 • HMAC Integrity')}
     `;
 
-    await transporter.sendMail({
-      from: `"VaultZero Security" <${process.env.EMAIL_USER}>`,
+    await sendMailLogged({
+      from: `"VaultZero Security" <${FROM_ADDRESS}>`,
       to,
       subject: "VaultZero — Vault Released",
       html: wrapEmail(body),
-    });
-
-    logger.info({ to, vaultId: vault?.id }, 'Release email sent');
+    }, { type: "release", to, vaultId: vault?.id });
 
   } catch (error) {
-    logger.error(error, "❌ Release email failed");
+    logger.error(error, "Release email failed");
   }
 };
 
