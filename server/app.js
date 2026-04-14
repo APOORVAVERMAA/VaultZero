@@ -38,15 +38,15 @@ const allowedOrigins = [
   process.env.FRONTEND_URL,
 ];
 
-// const cors = require("cors");
-
 app.use(cors({
   origin: true,
   credentials: true,
-  methods: ["GET", "POST", "PUT", "DELETE"],
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"]
 }));
 
+// 🔥 IMPORTANT: HANDLE PREFLIGHT
+app.options("*", cors());
 // Middleware
 app.use(helmet());
 app.use(express.json({ limit: '50mb' }));
