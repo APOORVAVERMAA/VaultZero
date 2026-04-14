@@ -19,12 +19,19 @@ const smtpSecure = process.env.SMTP_SECURE === "true";
 const smtpRequireTLS = process.env.SMTP_REQUIRE_TLS !== "false";
 const smtpHostIp = process.env.SMTP_HOST_IP;
 const allowAltPorts = process.env.SMTP_DISABLE_ALT_PORTS !== "true";
+const smtpConnectionTimeout = Number(process.env.SMTP_CONNECTION_TIMEOUT_MS || 8000);
+const smtpGreetingTimeout = Number(process.env.SMTP_GREETING_TIMEOUT_MS || 8000);
+const smtpSocketTimeout = Number(process.env.SMTP_SOCKET_TIMEOUT_MS || 12000);
+const smtpFailThreshold = Number(process.env.SMTP_FAIL_THRESHOLD || 2);
+const smtpBlockCooldownMs = Number(process.env.SMTP_BLOCK_COOLDOWN_MS || 10 * 60 * 1000);
 
 let verifyPromise = null;
 let verified = false;
 let lastWorkingEndpoint = null;
 let candidateCache = [];
 let candidateCacheAt = 0;
+let consecutiveConnectivityFailures = 0;
+let smtpBlockedUntil = 0;
 
 const resolveIpv4 = (hostname, _opts, cb) => {
   dns.lookup(hostname, { family: 4, all: false }, cb);
@@ -46,12 +53,9 @@ const createTransport = (endpoint) => nodemailer.createTransport({
     rejectUnauthorized: false,
     servername: endpoint.servername || smtpHost,
   },
-  pool: true,
-  maxConnections: 3,
-  maxMessages: 100,
-  connectionTimeout: 15000,
-  greetingTimeout: 15000,
-  socketTimeout: 30000,
+  connectionTimeout: smtpConnectionTimeout,
+  greetingTimeout: smtpGreetingTimeout,
+  socketTimeout: smtpSocketTimeout,
 });
 
 const endpointKey = (endpoint) => `${endpoint.host}:${endpoint.port}:${endpoint.secure ? "tls" : "starttls"}`;
@@ -134,8 +138,52 @@ const prioritizedEndpoints = async () => {
   return [preferred, ...endpoints.filter((e) => endpointKey(e) !== preferredKey)];
 };
 
+const isConnectivityError = (error) => {
+  const connectivityCodes = new Set(["ETIMEDOUT", "ENETUNREACH", "ECONNRESET", "ECONNREFUSED", "EHOSTUNREACH"]);
+  return connectivityCodes.has(error?.code);
+};
+
+const noteConnectivityFailure = () => {
+  consecutiveConnectivityFailures += 1;
+  if (consecutiveConnectivityFailures >= smtpFailThreshold) {
+    smtpBlockedUntil = Date.now() + smtpBlockCooldownMs;
+    logger.error(
+      {
+        consecutiveConnectivityFailures,
+        smtpFailThreshold,
+        smtpBlockCooldownMs,
+      },
+      "SMTP circuit breaker opened due to repeated connectivity failures"
+    );
+  }
+};
+
+const clearConnectivityFailureState = () => {
+  consecutiveConnectivityFailures = 0;
+  smtpBlockedUntil = 0;
+};
+
+const maybeShortCircuit = () => {
+  if (!smtpBlockedUntil) return false;
+  if (Date.now() >= smtpBlockedUntil) {
+    smtpBlockedUntil = 0;
+    return false;
+  }
+  return true;
+};
+
 const verifyEmailTransport = async () => {
   if (process.env.NODE_ENV === "test" || verified) {
+    return;
+  }
+
+  if (maybeShortCircuit()) {
+    logger.warn(
+      {
+        blockedUntil: new Date(smtpBlockedUntil).toISOString(),
+      },
+      "Skipping SMTP verify while circuit breaker is open"
+    );
     return;
   }
 
@@ -176,6 +224,7 @@ const verifyEmailTransport = async () => {
 
       lastWorkingEndpoint = verifiedEndpoint;
       verified = true;
+      clearConnectivityFailureState();
       logger.info(
         {
           provider: "gmail-smtp-app-password",
@@ -192,7 +241,8 @@ const verifyEmailTransport = async () => {
       );
     } catch (error) {
       logger.error(error, "Email transport verification failed");
-      if (error?.code === "ENETUNREACH" || error?.code === "ETIMEDOUT") {
+      if (isConnectivityError(error)) {
+        noteConnectivityFailure();
         logger.error(
           {
             hint: "Set SMTP_FORCE_IPV4=true and optionally SMTP_HOST_IP=<gmail ipv4>, with SMTP_PORT=587, SMTP_SECURE=false, SMTP_REQUIRE_TLS=true.",
@@ -211,14 +261,29 @@ const verifyEmailTransport = async () => {
 };
 
 const sendMailLogged = async (mailOptions, logContext = {}) => {
+  if (maybeShortCircuit()) {
+    const shortCircuitError = new Error("SMTP temporarily unavailable due to repeated connectivity failures");
+    shortCircuitError.code = "ESMTPBLOCKED";
+    logger.warn(
+      {
+        ...logContext,
+        blockedUntil: new Date(smtpBlockedUntil).toISOString(),
+      },
+      "Skipping email send while SMTP circuit breaker is open"
+    );
+    throw shortCircuitError;
+  }
+
   const endpoints = await prioritizedEndpoints();
   let lastError = null;
+  let sawConnectivityFailure = false;
 
   for (const endpoint of endpoints) {
     try {
       const transport = createTransport(endpoint);
       const info = await transport.sendMail(mailOptions);
       lastWorkingEndpoint = endpoint;
+      clearConnectivityFailureState();
       logger.info(
         {
           ...logContext,
@@ -236,6 +301,9 @@ const sendMailLogged = async (mailOptions, logContext = {}) => {
       return info;
     } catch (error) {
       lastError = error;
+      if (isConnectivityError(error)) {
+        sawConnectivityFailure = true;
+      }
       logger.warn(
         {
           ...logContext,
@@ -247,6 +315,10 @@ const sendMailLogged = async (mailOptions, logContext = {}) => {
         "Email send failed for SMTP endpoint candidate"
       );
     }
+  }
+
+  if (sawConnectivityFailure) {
+    noteConnectivityFailure();
   }
 
   logger.error({ ...logContext, err: lastError }, "Email send failed");
