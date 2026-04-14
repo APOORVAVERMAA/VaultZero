@@ -7,7 +7,7 @@ const TYPE_META = {
   release: { label: "Dead-Man Release", desc: "Released if trigger fires", color: "border-amber-500/30 text-amber-300" },
 };
 
-const MAX_FILE_SIZE = 15 * 1024 * 1024; // 15MB
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 
 function CreateVaultModal({
   message,
@@ -42,7 +42,7 @@ function CreateVaultModal({
     const selected = e.target.files?.[0];
     if (!selected) return;
     if (selected.size > MAX_FILE_SIZE) {
-      alert("Media file too large. Maximum allowed size is 15MB.");
+      alert("Media file too large. Maximum allowed size is 10MB.");
       e.target.value = "";
       return;
     }

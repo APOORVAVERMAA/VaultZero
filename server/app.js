@@ -44,8 +44,8 @@ app.use(cors({
 
 // ================= MIDDLEWARE =================
 app.use(helmet());
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ limit: '50mb', extended: true }));
+app.use(express.json({ limit: '15mb' }));
+app.use(express.urlencoded({ limit: '15mb', extended: true }));
 app.use(morgan('dev'));
 
 
@@ -101,6 +101,10 @@ app.use('/api/user', userRoutes);
 const vaultRoutes = require('./routes/vaultRoutes');
 app.use('/api/vault', vaultRoutes);
 
+app.use((err, req, res, next) => {
+  console.error("GLOBAL ERROR:", err);
+  res.status(500).json({ message: "Server error" });
+});
 
 // ================= SERVER =================
 const PORT = process.env.PORT || 9000;
