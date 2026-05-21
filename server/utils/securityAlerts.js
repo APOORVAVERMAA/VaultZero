@@ -4,11 +4,10 @@ const { wrapEmail, infoTable, heading, subtext, badge, warningBox, esc } = requi
 const { formatLocation, formatTime } = require("./geolocate");
 
 const emailProvider = (process.env.EMAIL_PROVIDER || "").toLowerCase().trim() || (process.env.RESEND_API_KEY ? "resend" : "smtp");
-const FROM_ADDRESS = (process.env.EMAIL_FROM || process.env.EMAIL_USER || "").trim();
-
-if (emailProvider === "resend" && !FROM_ADDRESS) {
-  throw new Error("EMAIL_FROM is required when EMAIL_PROVIDER=resend");
-}
+const configuredFrom = (process.env.EMAIL_FROM || process.env.EMAIL_USER || "").trim();
+const FROM_ADDRESS = emailProvider === "resend"
+  ? (configuredFrom && !/@gmail\.com$/i.test(configuredFrom) ? configuredFrom : "VaultZero <onboarding@resend.dev>")
+  : configuredFrom;
 
 const EVENT_CONFIG = {
   vault_opened: {
