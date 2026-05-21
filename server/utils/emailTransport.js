@@ -3,7 +3,8 @@ const nodemailer = require("nodemailer");
 const dns = require("dns");
 const dnsPromises = require("dns").promises;
 
-const emailProvider = (process.env.EMAIL_PROVIDER || "smtp").toLowerCase();
+const configuredEmailProvider = (process.env.EMAIL_PROVIDER || "").toLowerCase().trim();
+const emailProvider = configuredEmailProvider || (process.env.RESEND_API_KEY ? "resend" : "smtp");
 const resendApiKey = process.env.RESEND_API_KEY;
 const resendApiBaseUrl = process.env.RESEND_API_BASE_URL || "https://api.resend.com";
 
@@ -36,6 +37,7 @@ let candidateCache = [];
 let candidateCacheAt = 0;
 let consecutiveConnectivityFailures = 0;
 let smtpBlockedUntil = 0;
+const shouldPreflightSmtp = process.env.EMAIL_VERIFY_ON_START === "true" || process.env.EMAIL_VERIFY_ON_FIRST_SEND === "true";
 
 const withTimeout = async (fn, timeoutMs, timeoutMessage) => {
   const controller = new AbortController();
@@ -298,6 +300,10 @@ const maybeShortCircuit = () => {
 };
 
 const verifyEmailTransport = async () => {
+  if (emailProvider === "smtp" && !shouldPreflightSmtp) {
+    return;
+  }
+
   if (process.env.NODE_ENV === "test" || verified) {
     return;
   }
@@ -478,6 +484,21 @@ const sendMailLogged = async (mailOptions, logContext = {}) => {
 
   if (sawConnectivityFailure) {
     noteConnectivityFailure();
+  }
+
+  if (resendApiKey) {
+    logger.warn(
+      {
+        ...logContext,
+        lastError,
+      },
+      "SMTP failed; attempting Resend fallback"
+    );
+
+    return sendWithResend(mailOptions, {
+      ...logContext,
+      provider: "resend-fallback",
+    });
   }
 
   logger.error({ ...logContext, err: lastError }, "Email send failed");

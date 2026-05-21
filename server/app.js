@@ -1,6 +1,7 @@
 require('dotenv').config();
 
-const emailProvider = (process.env.EMAIL_PROVIDER || "smtp").toLowerCase();
+const configuredEmailProvider = (process.env.EMAIL_PROVIDER || "").toLowerCase().trim();
+const emailProvider = configuredEmailProvider || (process.env.RESEND_API_KEY ? "resend" : "smtp");
 
 const baseRequiredEnv = [
   "JWT_SECRET",
@@ -115,11 +116,14 @@ app.get('/health', async (req, res) => {
 // ================= ROUTES =================
 // ================= Initialize email transport in background (non-blocking) =================
 const { verifyEmailTransport } = require('./utils/emailTransport');
-setImmediate(() => {
-  verifyEmailTransport().catch(err => {
-    logger.warn({ err }, "Background email transport verification failed - emails may be slower");
+const shouldVerifyEmailTransportOnStart = emailProvider === "resend" || process.env.EMAIL_VERIFY_ON_START === "true";
+if (shouldVerifyEmailTransportOnStart) {
+  setImmediate(() => {
+    verifyEmailTransport().catch(err => {
+      logger.warn({ err }, "Background email transport verification failed - emails may be slower");
+    });
   });
-});
+}
 
 const authRoutes = require('./routes/authRoutes');
 app.use('/api/auth', authRoutes);

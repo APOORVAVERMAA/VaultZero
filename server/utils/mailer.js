@@ -13,16 +13,17 @@ const {
 } = require("./emailTemplate");
 const { formatLocation, formatTime } = require("./geolocate");
 
-// Lazy-load email transport verification on first send to avoid blocking startup
+const shouldPreflightEmail = (process.env.EMAIL_PROVIDER || "").toLowerCase().trim() === "resend" || Boolean(process.env.RESEND_API_KEY && !process.env.EMAIL_PROVIDER);
 let emailTransportInitialized = false;
 const ensureEmailTransportReady = async () => {
-  if (!emailTransportInitialized) {
-    emailTransportInitialized = true;
-    // Non-blocking background verification
-    setImmediate(() => verifyEmailTransport().catch(err => 
-      logger.warn(err, "Background email transport verification failed")
-    ));
+  if (emailTransportInitialized || !shouldPreflightEmail) {
+    return;
   }
+
+  emailTransportInitialized = true;
+  setImmediate(() => verifyEmailTransport().catch(err => 
+    logger.warn(err, "Background email transport verification failed")
+  ));
 };
 
 const FROM_ADDRESS = process.env.EMAIL_FROM || process.env.EMAIL_USER;
