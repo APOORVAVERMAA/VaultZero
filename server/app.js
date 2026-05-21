@@ -67,7 +67,6 @@ const corsOptions = {
 
 // ================= ✅ FINAL CORS (GLOBAL + CLEAN) =================
 app.use(cors(corsOptions));
-app.options("*", cors(corsOptions));
 
 
 // ================= MIDDLEWARE =================
