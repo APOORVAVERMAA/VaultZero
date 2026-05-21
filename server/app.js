@@ -39,11 +39,27 @@ app.set('trust proxy', 1);
 
 logger.info("STARTING SERVER...");
 
-const allowedOrigin = process.env.FRONTEND_URL;
+const normalizeOrigins = (value) =>
+  String(value || "")
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+
+const allowedOrigins = [
+  ...normalizeOrigins(process.env.CORS_ALLOWED_ORIGINS),
+  process.env.FRONTEND_URL,
+  ...(process.env.NODE_ENV !== "production" ? ["http://localhost:3000", "http://127.0.0.1:3000"] : []),
+].filter(Boolean);
 
 // ================= ✅ FINAL CORS (GLOBAL + CLEAN) =================
 app.use(cors({
-  origin: allowedOrigin,
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+
+    return callback(new Error(`Origin ${origin} is not allowed by CORS`));
+  },
   credentials: true,
   allowedHeaders: ["Content-Type", "Authorization"],
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
