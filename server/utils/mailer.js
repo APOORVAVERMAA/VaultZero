@@ -26,7 +26,26 @@ const ensureEmailTransportReady = async () => {
   ));
 };
 
-const FROM_ADDRESS = process.env.EMAIL_FROM || process.env.EMAIL_USER;
+const emailProvider = (process.env.EMAIL_PROVIDER || "").toLowerCase().trim() || (process.env.RESEND_API_KEY ? "resend" : "smtp");
+const resolveFromAddress = () => {
+  const configuredFrom = (process.env.EMAIL_FROM || process.env.EMAIL_USER || "").trim();
+
+  if (emailProvider === "resend") {
+    if (configuredFrom && !/@gmail\.com$/i.test(configuredFrom)) {
+      return configuredFrom;
+    }
+
+    logger.warn(
+      { configuredFrom },
+      "Using Resend onboarding sender because EMAIL_FROM is missing or Gmail-based"
+    );
+    return "VaultZero <onboarding@resend.dev>";
+  }
+
+  return configuredFrom;
+};
+
+const FROM_ADDRESS = resolveFromAddress();
 
 
 // ================= VERIFICATION EMAIL =================

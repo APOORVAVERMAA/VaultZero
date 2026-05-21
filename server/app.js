@@ -11,7 +11,7 @@ const baseRequiredEnv = [
 ];
 
 const providerRequiredEnv = emailProvider === "resend"
-  ? ["RESEND_API_KEY", "EMAIL_FROM"]
+  ? ["RESEND_API_KEY"]
   : ["EMAIL_USER", "EMAIL_PASS"];
 
 const requiredEnv = [...baseRequiredEnv, ...providerRequiredEnv];
