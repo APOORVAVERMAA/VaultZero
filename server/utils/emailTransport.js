@@ -65,33 +65,6 @@ const normalizeRecipients = (value) => {
   return [String(value)];
 };
 
-const verifyResendTransport = async () => {
-  if (!resendApiKey) {
-    throw new Error("Missing RESEND_API_KEY for EMAIL_PROVIDER=resend");
-  }
-
-  await withTimeout(
-    async (signal) => {
-      const response = await fetch(`${resendApiBaseUrl}/domains`, {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${resendApiKey}`,
-        },
-        signal,
-      });
-
-      if (!response.ok) {
-        const body = await response.text();
-        const err = new Error(`Resend verify failed (${response.status}) ${body}`);
-        err.code = `ERESEND_${response.status}`;
-        throw err;
-      }
-    },
-    8000,
-    "Resend verify timeout"
-  );
-};
-
 const sendWithResend = async (mailOptions, logContext = {}) => {
   if (!resendApiKey) {
     const err = new Error("Missing RESEND_API_KEY for EMAIL_PROVIDER=resend");
@@ -309,32 +282,14 @@ const verifyEmailTransport = async () => {
   }
 
   if (emailProvider === "resend") {
-    if (verifyPromise) {
-      await verifyPromise;
-      return;
-    }
-
-    verifyPromise = (async () => {
-      try {
-        await verifyResendTransport();
-        verified = true;
-        logger.info(
-          {
-            provider: "resend-api",
-            sender: process.env.EMAIL_FROM || process.env.EMAIL_USER,
-          },
-          "Email transport verified"
-        );
-      } catch (error) {
-        logger.error(error, "Email transport verification failed");
-      }
-    })();
-
-    try {
-      await verifyPromise;
-    } finally {
-      verifyPromise = null;
-    }
+    verified = true;
+    logger.info(
+      {
+        provider: "resend-api",
+        sender: process.env.EMAIL_FROM || process.env.EMAIL_USER || "onboarding@resend.dev",
+      },
+      "Email transport ready"
+    );
     return;
   }
 

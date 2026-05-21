@@ -28,21 +28,32 @@ const ensureEmailTransportReady = async () => {
 
 const emailProvider = (process.env.EMAIL_PROVIDER || "").toLowerCase().trim() || (process.env.RESEND_API_KEY ? "resend" : "smtp");
 const configuredFrom = (process.env.EMAIL_FROM || process.env.EMAIL_USER || "").trim();
-const FROM_ADDRESS = emailProvider === "resend"
-  ? (configuredFrom && !/@gmail\.com$/i.test(configuredFrom) ? configuredFrom : "VaultZero <onboarding@resend.dev>")
-  : configuredFrom;
-
-const formatFromHeader = (sender, displayName) => {
-  if (!sender) {
-    return sender;
+const normalizeFromEmail = (sender) => {
+  const value = String(sender || "").trim();
+  if (!value) {
+    return "onboarding@resend.dev";
   }
 
-  if (sender.includes("<") && sender.includes(">")) {
-    return sender;
+  const angledMatch = value.match(/<\s*([^<>\s]+@[^<>\s]+)\s*>/);
+  if (angledMatch?.[1]) {
+    return angledMatch[1];
   }
 
-  return displayName ? `${displayName} <${sender}>` : sender;
+  if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
+    return value;
+  }
+
+  const trailingMatch = value.match(/([^\s@]+@[^\s@]+\.[^\s@]+)$/);
+  if (trailingMatch?.[1]) {
+    return trailingMatch[1];
+  }
+
+  return "onboarding@resend.dev";
 };
+
+const FROM_ADDRESS = emailProvider === "resend"
+  ? normalizeFromEmail(configuredFrom)
+  : configuredFrom;
 
 if (emailProvider === "resend" && (!configuredFrom || /@gmail\.com$/i.test(configuredFrom))) {
   logger.warn({ configuredFrom }, "Using Resend onboarding sender because EMAIL_FROM is missing or Gmail-based");
@@ -71,7 +82,7 @@ const sendVerificationEmail = async (to, fullName, verificationLink, meta = null
     `;
 
     await sendMailLogged({
-      from: formatFromHeader(FROM_ADDRESS, "VaultZero Security"),
+      from: FROM_ADDRESS,
       to,
       subject: "Verify Your Email — VaultZero",
       html: wrapEmail(body),
@@ -110,7 +121,7 @@ const sendReleaseEmail = async (to, vault, ownerEmail, releaseLink) => {
     `;
 
     await sendMailLogged({
-      from: formatFromHeader(FROM_ADDRESS, "VaultZero Security"),
+      from: FROM_ADDRESS,
       to,
       subject: "VaultZero — Vault Released",
       html: wrapEmail(body),

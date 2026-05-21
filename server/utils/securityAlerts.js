@@ -5,21 +5,32 @@ const { formatLocation, formatTime } = require("./geolocate");
 
 const emailProvider = (process.env.EMAIL_PROVIDER || "").toLowerCase().trim() || (process.env.RESEND_API_KEY ? "resend" : "smtp");
 const configuredFrom = (process.env.EMAIL_FROM || process.env.EMAIL_USER || "").trim();
-const FROM_ADDRESS = emailProvider === "resend"
-  ? (configuredFrom && !/@gmail\.com$/i.test(configuredFrom) ? configuredFrom : "VaultZero <onboarding@resend.dev>")
-  : configuredFrom;
-
-const formatFromHeader = (sender, displayName) => {
-  if (!sender) {
-    return sender;
+const normalizeFromEmail = (sender) => {
+  const value = String(sender || "").trim();
+  if (!value) {
+    return "onboarding@resend.dev";
   }
 
-  if (sender.includes("<") && sender.includes(">")) {
-    return sender;
+  const angledMatch = value.match(/<\s*([^<>\s]+@[^<>\s]+)\s*>/);
+  if (angledMatch?.[1]) {
+    return angledMatch[1];
   }
 
-  return displayName ? `${displayName} <${sender}>` : sender;
+  if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
+    return value;
+  }
+
+  const trailingMatch = value.match(/([^\s@]+@[^\s@]+\.[^\s@]+)$/);
+  if (trailingMatch?.[1]) {
+    return trailingMatch[1];
+  }
+
+  return "onboarding@resend.dev";
 };
+
+const FROM_ADDRESS = emailProvider === "resend"
+  ? normalizeFromEmail(configuredFrom)
+  : configuredFrom;
 
 const EVENT_CONFIG = {
   vault_opened: {
@@ -87,7 +98,7 @@ const sendSecurityAlert = async (userEmail, eventType, vaultId, meta = null) => 
     `;
 
     await sendMailLogged({
-      from: formatFromHeader(FROM_ADDRESS, "VaultZero Security"),
+      from: FROM_ADDRESS,
       to: userEmail,
       subject: config.subject,
       html: wrapEmail(body),
@@ -116,7 +127,7 @@ const sendLoginAlert = async (userEmail, ip, userAgent, timestamp, location = nu
     `;
 
     await sendMailLogged({
-      from: formatFromHeader(FROM_ADDRESS, "VaultZero Security"),
+      from: FROM_ADDRESS,
       to: userEmail,
       subject: "VaultZero Security — New Login Detected",
       html: wrapEmail(body),
