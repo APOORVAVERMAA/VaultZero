@@ -52,19 +52,22 @@ const allowedOrigins = [
   ...(process.env.NODE_ENV !== "production" ? ["http://localhost:3000", "http://127.0.0.1:3000"] : []),
 ].filter(Boolean);
 
-// ================= ✅ FINAL CORS (GLOBAL + CLEAN) =================
-app.use(cors({
+const corsOptions = {
   origin: (origin, callback) => {
     if (!origin || allowedOrigins.includes(origin)) {
       return callback(null, true);
     }
 
-    return callback(new Error(`Origin ${origin} is not allowed by CORS`));
+    return callback(null, false);
   },
   credentials: true,
   allowedHeaders: ["Content-Type", "Authorization"],
-  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
-}));
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+};
+
+// ================= ✅ FINAL CORS (GLOBAL + CLEAN) =================
+app.use(cors(corsOptions));
+app.options("*", cors(corsOptions));
 
 
 // ================= MIDDLEWARE =================
