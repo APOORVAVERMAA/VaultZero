@@ -13,7 +13,17 @@ const {
 } = require("./emailTemplate");
 const { formatLocation, formatTime } = require("./geolocate");
 
-verifyEmailTransport();
+// Lazy-load email transport verification on first send to avoid blocking startup
+let emailTransportInitialized = false;
+const ensureEmailTransportReady = async () => {
+  if (!emailTransportInitialized) {
+    emailTransportInitialized = true;
+    // Non-blocking background verification
+    setImmediate(() => verifyEmailTransport().catch(err => 
+      logger.warn(err, "Background email transport verification failed")
+    ));
+  }
+};
 
 const FROM_ADDRESS = process.env.EMAIL_FROM || process.env.EMAIL_USER;
 
@@ -21,6 +31,7 @@ const FROM_ADDRESS = process.env.EMAIL_FROM || process.env.EMAIL_USER;
 // ================= VERIFICATION EMAIL =================
 const sendVerificationEmail = async (to, fullName, verificationLink, meta = null) => {
   try {
+    ensureEmailTransportReady();
     const firstName = esc((fullName || '').split(" ")[0] || 'there');
     const timeStr = formatTime(meta?.time);
     const locationStr = meta?.location ? esc(formatLocation(meta.location)) : null;
@@ -54,6 +65,7 @@ const sendVerificationEmail = async (to, fullName, verificationLink, meta = null
 // ================= DEAD-MAN RELEASE EMAIL =================
 const sendReleaseEmail = async (to, vault, ownerEmail, releaseLink) => {
   try {
+    ensureEmailTransportReady();
     const body = `
       ${badge('Dead-Man Vault Release', '#f59e0b')}
       ${heading('Secure Vault Released')}

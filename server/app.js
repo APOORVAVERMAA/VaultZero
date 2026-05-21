@@ -1,13 +1,19 @@
 require('dotenv').config();
 
-const requiredEnv = [
+const emailProvider = (process.env.EMAIL_PROVIDER || "smtp").toLowerCase();
+
+const baseRequiredEnv = [
   "JWT_SECRET",
   "HMAC_SECRET",
-  "EMAIL_USER",
-  "EMAIL_PASS",
   "FRONTEND_URL",
   "DATABASE_URL"
 ];
+
+const providerRequiredEnv = emailProvider === "resend"
+  ? ["RESEND_API_KEY", "EMAIL_FROM"]
+  : ["EMAIL_USER", "EMAIL_PASS"];
+
+const requiredEnv = [...baseRequiredEnv, ...providerRequiredEnv];
 
 requiredEnv.forEach((key) => {
   if (!process.env[key]) {
@@ -33,10 +39,11 @@ app.set('trust proxy', 1);
 
 logger.info("STARTING SERVER...");
 
+const allowedOrigin = process.env.FRONTEND_URL;
 
 // ================= ✅ FINAL CORS (GLOBAL + CLEAN) =================
 app.use(cors({
-  origin: true, // allow all origins (safe due to JWT + encryption)
+  origin: allowedOrigin,
   credentials: true,
   allowedHeaders: ["Content-Type", "Authorization"],
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
@@ -90,6 +97,14 @@ app.get('/health', async (req, res) => {
 
 
 // ================= ROUTES =================
+// ================= Initialize email transport in background (non-blocking) =================
+const { verifyEmailTransport } = require('./utils/emailTransport');
+setImmediate(() => {
+  verifyEmailTransport().catch(err => {
+    logger.warn({ err }, "Background email transport verification failed - emails may be slower");
+  });
+});
+
 const authRoutes = require('./routes/authRoutes');
 app.use('/api/auth', authRoutes);
 

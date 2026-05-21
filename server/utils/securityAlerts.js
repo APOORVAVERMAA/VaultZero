@@ -3,8 +3,6 @@ const { sendMailLogged, verifyEmailTransport } = require("./emailTransport");
 const { wrapEmail, infoTable, heading, subtext, badge, warningBox, esc } = require("./emailTemplate");
 const { formatLocation, formatTime } = require("./geolocate");
 
-verifyEmailTransport();
-
 const FROM_ADDRESS = process.env.EMAIL_FROM || process.env.EMAIL_USER;
 
 const EVENT_CONFIG = {
