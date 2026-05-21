@@ -32,6 +32,18 @@ const FROM_ADDRESS = emailProvider === "resend"
   ? (configuredFrom && !/@gmail\.com$/i.test(configuredFrom) ? configuredFrom : "VaultZero <onboarding@resend.dev>")
   : configuredFrom;
 
+const formatFromHeader = (sender, displayName) => {
+  if (!sender) {
+    return sender;
+  }
+
+  if (sender.includes("<") && sender.includes(">")) {
+    return sender;
+  }
+
+  return displayName ? `${displayName} <${sender}>` : sender;
+};
+
 if (emailProvider === "resend" && (!configuredFrom || /@gmail\.com$/i.test(configuredFrom))) {
   logger.warn({ configuredFrom }, "Using Resend onboarding sender because EMAIL_FROM is missing or Gmail-based");
 }
@@ -59,7 +71,7 @@ const sendVerificationEmail = async (to, fullName, verificationLink, meta = null
     `;
 
     await sendMailLogged({
-      from: `"VaultZero Security" <${FROM_ADDRESS}>`,
+      from: formatFromHeader(FROM_ADDRESS, "VaultZero Security"),
       to,
       subject: "Verify Your Email — VaultZero",
       html: wrapEmail(body),
@@ -98,7 +110,7 @@ const sendReleaseEmail = async (to, vault, ownerEmail, releaseLink) => {
     `;
 
     await sendMailLogged({
-      from: `"VaultZero Security" <${FROM_ADDRESS}>`,
+      from: formatFromHeader(FROM_ADDRESS, "VaultZero Security"),
       to,
       subject: "VaultZero — Vault Released",
       html: wrapEmail(body),

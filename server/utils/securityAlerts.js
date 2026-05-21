@@ -9,6 +9,18 @@ const FROM_ADDRESS = emailProvider === "resend"
   ? (configuredFrom && !/@gmail\.com$/i.test(configuredFrom) ? configuredFrom : "VaultZero <onboarding@resend.dev>")
   : configuredFrom;
 
+const formatFromHeader = (sender, displayName) => {
+  if (!sender) {
+    return sender;
+  }
+
+  if (sender.includes("<") && sender.includes(">")) {
+    return sender;
+  }
+
+  return displayName ? `${displayName} <${sender}>` : sender;
+};
+
 const EVENT_CONFIG = {
   vault_opened: {
     subject: "VaultZero Alert — Vault Accessed",
@@ -75,7 +87,7 @@ const sendSecurityAlert = async (userEmail, eventType, vaultId, meta = null) => 
     `;
 
     await sendMailLogged({
-      from: `"VaultZero Security" <${FROM_ADDRESS}>`,
+      from: formatFromHeader(FROM_ADDRESS, "VaultZero Security"),
       to: userEmail,
       subject: config.subject,
       html: wrapEmail(body),
@@ -104,7 +116,7 @@ const sendLoginAlert = async (userEmail, ip, userAgent, timestamp, location = nu
     `;
 
     await sendMailLogged({
-      from: `"VaultZero Security" <${FROM_ADDRESS}>`,
+      from: formatFromHeader(FROM_ADDRESS, "VaultZero Security"),
       to: userEmail,
       subject: "VaultZero Security — New Login Detected",
       html: wrapEmail(body),
